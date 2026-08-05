@@ -1,0 +1,9 @@
+node_modules/
+.env
+dist/
+web/dist/
+web/node_modules/
+*.log
+.DS_Store
+.claude/
+skills-lock.json

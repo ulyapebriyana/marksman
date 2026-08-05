@@ -1,0 +1,23 @@
+{
+  "name": "marksman-server",
+  "version": "1.0.0",
+  "description": "Marksman backend — Robinhood Chain DEX pool screener (scan, score, signal, serve).",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node --watch server/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^5.0.1"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.4"
+  }
+}

@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-bg: #0a0d12;
+  --color-surface: #10141b;
+  --color-surface-raised: #161b24;
+  --color-border: #232a36;
+  --color-border-strong: #2f3947;
+  --color-text: #e8ecf1;
+  --color-text-dim: #8b96a5;
+  --color-text-faint: #7c8797; /* WCAG AA: 5.1:1 on --color-surface, 5.4:1 on --color-bg */
+
+  --color-accent: #4fd1a5;
+  --color-accent-dim: #2b7a5c;
+  --color-hot: #ff5d5d;
+  --color-hot-dim: #7a2b2b;
+  --color-watch: #f5b942;
+  --color-watch-dim: #7a5f22;
+  --color-danger: #ff5d5d;
+  --color-up: #38d67a;
+  --color-down: #ff5d5d;
+}
+
+:root[data-theme="light"] {
+  --color-bg: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #e2e6ec;
+  --color-border-strong: #cbd2dc;
+  --color-text: #12161c;
+  --color-text-dim: #566073;
+  --color-text-faint: #6b7484; /* WCAG AA: 4.7:1 on white */
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-bg: #f5f7fa;
+    --color-surface: #ffffff;
+    --color-surface-raised: #ffffff;
+    --color-border: #e2e6ec;
+    --color-border-strong: #cbd2dc;
+    --color-text: #12161c;
+    --color-text-dim: #566073;
+    --color-text-faint: #6b7484;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent); }
+  100% { box-shadow: 0 0 0 8px color-mix(in srgb, currentColor 0%, transparent); }
+}
+
+.signal-pulse {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+}
