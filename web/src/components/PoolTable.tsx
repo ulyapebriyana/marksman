@@ -21,6 +21,7 @@ function useSortedFiltered(pools: Pool[], search: string, sortKey: SortKey, sort
           (p) =>
             p.baseToken.symbol?.toLowerCase().includes(term) ||
             p.baseToken.name?.toLowerCase().includes(term) ||
+            p.quoteToken.symbol?.toLowerCase().includes(term) ||
             p.stockTicker?.toLowerCase().includes(term)
         )
       : pools;
@@ -146,15 +147,19 @@ export function PoolTable({ pools, onSelectPool }: { pools: Pool[]; onSelectPool
                     <div className="flex items-center gap-2">
                       <div>
                         <div className="flex items-center gap-1.5 font-medium text-[var(--color-text)]">
-                          {pool.baseToken.symbol ?? "?"}
+                          <span>
+                            {pool.baseToken.symbol ?? "?"}
+                            <span className="text-[var(--color-text-faint)]"> / {pool.quoteToken.symbol ?? "?"}</span>
+                          </span>
                           {pool.isTokenizedStock && (
                             <span className="rounded border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 px-1 text-[10px] font-semibold text-[var(--color-accent)]">
                               {pool.stockTicker}
                             </span>
                           )}
                         </div>
-                        <div className="max-w-[160px] truncate text-[11px] text-[var(--color-text-faint)]">
+                        <div className="max-w-[200px] truncate text-[11px] text-[var(--color-text-faint)]">
                           {pool.baseToken.name}
+                          {pool.dexId ? ` · ${pool.dexId}` : ""}
                         </div>
                       </div>
                     </div>

@@ -77,14 +77,20 @@ export function PoolDetailDrawer({
         <div className="sticky top-0 flex items-start justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-[var(--color-text)]">{pool.baseToken.symbol}</h2>
+              <h2 className="text-lg font-semibold text-[var(--color-text)]">
+                {pool.baseToken.symbol}
+                <span className="text-[var(--color-text-faint)]"> / {pool.quoteToken.symbol ?? "?"}</span>
+              </h2>
               {pool.isTokenizedStock && (
                 <span className="rounded border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-accent)]">
                   Tokenized {pool.stockTicker}
                 </span>
               )}
             </div>
-            <p className="text-xs text-[var(--color-text-faint)]">{pool.baseToken.name}</p>
+            <p className="text-xs text-[var(--color-text-faint)]">
+              {pool.baseToken.name}
+              {pool.dexId ? ` · ${pool.dexId}` : ""}
+            </p>
           </div>
           <button onClick={onClose} className="rounded-md p-1 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-raised)]">
             <X size={18} />
