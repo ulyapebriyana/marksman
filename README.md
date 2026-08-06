@@ -15,7 +15,9 @@ informational only.
 - **Backend**: Node.js 20+, Express 5, pure ESM. No database — in-memory
   cache + a single JSON history file. Vitest for tests.
 - **Frontend**: React 19 + TypeScript + Vite, Tailwind CSS v4, TanStack Query
-  (polling/caching), Recharts (sparklines/charts), lucide-react (icons).
+  (polling/caching), Recharts (the analytics scatter only), lucide-react (icons).
+  Routing and the 3D hero are hand-rolled rather than pulled in as dependencies —
+  see below.
 
 ## Project structure
 
@@ -41,10 +43,49 @@ data/
   token-map.json         tokenized-stock address -> ticker map (edit this!)
 
 web/                Frontend (Vite + React)
-  src/api/              typed fetch client
-  src/hooks/             TanStack Query hooks, theme, toast
-  src/components/        dashboard UI (table, drawer, history, badges, charts)
+  src/api/              typed fetch client + response types
+  src/lib/              router.tsx (~60-line history router), poolMath.ts
+                        (filter/sort/aggregate/CSV), format.ts, nav.ts, storage.ts
+  src/hooks/            TanStack Query hooks, theme + toast providers,
+                        watchlist, hotkeys, misc (focus trap, scan countdown)
+  src/pages/            Landing.tsx (marketing) and Console.tsx (the app shell)
+  src/components/
+    SpreadField.tsx     the 3D field — see "The Spread Field" below
+    ui/                 primitives, badges, charts, states, wordmark
+    shell/              left rail, top bar, mobile nav, command palette
+    screener/           filter panel, table, cards, compare tray
+    views/              one file per console view
+    PoolDrawer.tsx      pool detail sheet (overview / score / risk / details)
 ```
+
+### Routes
+
+Two surfaces, one bundle. `/` is the landing page; everything under `/app` is
+the console (`/app`, `/app/screener`, `/app/spreads`, `/app/signals`,
+`/app/analytics`, `/app/system`). Unknown paths fall back to the landing page,
+and unknown `/app/*` paths fall back to the overview.
+
+`server/index.mjs` already serves `web/dist/index.html` for any non-`/api` path,
+so deep links work in production without extra configuration.
+
+### The Spread Field
+
+`web/src/components/SpreadField.tsx` renders every scanned pool as a node in a
+3D measurement volume — x is liquidity, y is the 1h move, z is 24h volume, all
+log-scaled and normalised. Tokenized stocks are drawn as a *pair*: the on-chain
+node and a hollow parity tick, joined by a strut whose length is the premium.
+A rangefinder reticle cycles through them and reads out the gap.
+
+It is a hand-rolled perspective projection on a 2D canvas, not WebGL — the scene
+is a few hundred points and a wireframe floor, which is not worth ~600 kB of
+Three.js. It pauses when offscreen or backgrounded, reads its colours from the
+CSS custom properties so it follows the theme, and honours
+`prefers-reduced-motion` by holding a fixed camera angle.
+
+**Degraded mode matters here.** Without `STOCK_API_KEY` no pool has a premium,
+so there are no struts to draw. Rather than going blank, the reticle falls back
+to sighting hot pools (and then the highest-scoring ones) and reads out the 1h
+move instead of the gap.
 
 ## Running it
 
@@ -109,9 +150,12 @@ buried in logic:
   pool, low trader count, large premium, missing data) and its point value.
 - `PRESETS.steady` / `PRESETS.marksman` — the gate each preset applies
   (min liquidity, premium band, volume floor, momentum range, min age, max
-  risk). `evaluatePreset()` picks up a new entry here automatically; the
-  frontend's switcher (`web/src/components/PresetSwitcher.tsx`) is hardcoded
-  to these two, so update it too if you add a third preset.
+  risk). `evaluatePreset()` picks up a new entry here automatically, but the
+  frontend is hardcoded to these two. Adding a third means updating:
+  `PresetKey` in `web/src/api/types.ts`, the two `Segmented` switchers in
+  `web/src/components/shell/Shell.tsx` (desktop and mobile rows), the toggle
+  command in `web/src/pages/Console.tsx`, and the `PRESETS` copy block in
+  `web/src/pages/Landing.tsx`.
 
 Change a number, re-run `npm test` — the test suite pins behavior at the
 boundaries (e.g. exact score at 0%/30%+ momentum, risk at each liquidity
