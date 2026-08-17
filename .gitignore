@@ -7,3 +7,4 @@ web/node_modules/
 .DS_Store
 .claude/
 skills-lock.json
+data/signal-history.json
