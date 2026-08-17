@@ -1,6 +1,82 @@
 export type SignalStatus = "none" | "watch" | "hot";
 export type PresetKey = "steady" | "marksman";
 
+/** LP posture. Independent of `PresetKey` — it gates a different question. */
+export type LpPresetKey = "harvest" | "carry" | "vault";
+
+/**
+ * Whether fee income covered LVR over the measured window.
+ * `inconclusive` means the edge sits inside the error band — it is a real
+ * answer, not a missing one, and must not be rendered as a pass.
+ */
+export type LpVerdict = "covers" | "shortfall" | "inconclusive" | "unmeasured";
+
+export interface LpRangeBand {
+  band: "tight" | "balanced" | "wide";
+  sigmaMultiple: number;
+  halfWidthPct: number | null;
+  /** Probability price never leaves the band over the horizon. */
+  holdProbability: number | null;
+  allocationPct: number | null;
+}
+
+export interface LpSessionState {
+  open: boolean;
+  phase: "regular" | "overnight" | "weekend";
+  weekday: string;
+  minuteOfDayEt: number;
+  sessionKnown: boolean;
+}
+
+export interface LpMetrics {
+  turnover: number | null;
+  feeTierBps: number;
+  feeTierKnown: boolean;
+  feeYieldDailyPct: number | null;
+  feeAprPct: number | null;
+
+  sigmaHourlyPct: number | null;
+  sigmaDailyPct: number | null;
+  volatilitySamples: number;
+  lvrDailyPct: number | null;
+
+  netEdgeDailyBps: number | null;
+  netEdgeMarginBps: number | null;
+  netEdgeAprPct: number | null;
+  verdict: LpVerdict;
+
+  horizonHours: number;
+  ranges: LpRangeBand[] | null;
+
+  ticketUsd: number;
+  projectedAprPct: number | null;
+  aprRetentionPct: number | null;
+  aprHalvingDepositUsd: number | null;
+
+  flow: { buys: number; sells: number; total: number } | null;
+  flowImbalance: number | null;
+
+  session: LpSessionState | null;
+  caveats: string[];
+}
+
+export interface LpScore {
+  total: number;
+  breakdown: {
+    netEdge: ScoreBreakdownItem;
+    depthResilience: ScoreBreakdownItem;
+    flowQuality: ScoreBreakdownItem;
+    rangeStability: ScoreBreakdownItem;
+    safety: ScoreBreakdownItem;
+  };
+  metrics: LpMetrics;
+}
+
+export interface LpGate {
+  passed: boolean;
+  misses: string[];
+}
+
 export interface TokenInfo {
   address: string;
   symbol: string | null;
@@ -67,6 +143,9 @@ export interface Pool {
   score: Score;
   presetGate: PresetGate;
   signalStatus: SignalStatus;
+  /** The liquidity-provider verdict. Deliberately disagrees with `score`. */
+  lp: LpScore;
+  lpGate: LpGate;
 }
 
 export interface SourceHealth {
@@ -82,6 +161,7 @@ export interface PoolsResponse {
     sourceHealth: SourceHealth;
     activePreset: PresetKey;
     requestedPreset: PresetKey;
+    requestedLpPreset: LpPresetKey;
     poolCount: number;
   };
 }
@@ -91,6 +171,8 @@ export interface StatusResponse {
   uptimeSeconds: number;
   activePreset: PresetKey;
   presets: PresetKey[];
+  defaultLpPreset: LpPresetKey;
+  lpPresets: LpPresetKey[];
   scanIntervalSeconds: number;
   lastScan: { scannedAt: number; poolCount: number; sourceHealth: SourceHealth } | null;
   stockApiConfigured: boolean;

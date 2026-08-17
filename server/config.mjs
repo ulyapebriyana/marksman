@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadTokenMap } from "../shared/dataSources/tokenMap.mjs";
 import { PRESETS } from "../shared/scoring.js";
+import { LP_PRESETS } from "../shared/lpScoring.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -19,12 +20,16 @@ export async function loadConfig() {
   const tokenMap = await loadTokenMap(tokenMapPath);
 
   const activePresetKey = process.env.ACTIVE_PRESET in PRESETS ? process.env.ACTIVE_PRESET : "marksman";
+  // The LP posture is browse-only — it gates a view, not signals/history/alerts
+  // — so this is just the default a client gets when it doesn't ask for one.
+  const defaultLpPresetKey = process.env.LP_PRESET in LP_PRESETS ? process.env.LP_PRESET : "carry";
 
   return Object.freeze({
     port: envInt("PORT", 8787),
     host: process.env.HOST ?? "127.0.0.1", // bind to loopback by default; put nginx/a reverse proxy in front for public exposure
     scanIntervalMs: envInt("SCAN_INTERVAL_SECONDS", 60) * 1000,
     activePresetKey,
+    defaultLpPresetKey,
 
     chainId: process.env.DEXSCREENER_CHAIN_ID ?? "robinhood",
     geckoNetworkSlug: process.env.GECKOTERMINAL_NETWORK ?? "robinhood",

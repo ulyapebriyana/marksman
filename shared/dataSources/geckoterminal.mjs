@@ -59,6 +59,11 @@ export async function getPoolsPage(network, opts = {}) {
     return {
       address: row.attributes?.address ?? row.id?.split("_").slice(1).join("_") ?? null,
       dexName: byId.get(`dex:${dexRef}`)?.attributes?.name ?? null,
+      // GeckoTerminal has no fee field, but it suffixes the pool name with the
+      // tier ("USDG / WETH 0.01%"). That string is the only place the tier is
+      // published, and getting it wrong scales fee income by up to 30x — so
+      // it's carried through and parsed in normalize.js.
+      name: a.name ?? null,
       baseToken: resolveToken(byId, row.relationships?.base_token),
       quoteToken: resolveToken(byId, row.relationships?.quote_token),
       priceUsd: a.base_token_price_usd,

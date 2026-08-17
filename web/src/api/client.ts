@@ -1,4 +1,11 @@
-import type { AlertResponse, HistoryResponse, PoolsResponse, PresetKey, StatusResponse } from "./types";
+import type {
+  AlertResponse,
+  HistoryResponse,
+  LpPresetKey,
+  PoolsResponse,
+  PresetKey,
+  StatusResponse,
+} from "./types";
 import { ApiError } from "./types";
 
 async function get<T>(path: string): Promise<T> {
@@ -10,9 +17,12 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
-export function fetchPools(opts: { preset?: PresetKey; force?: boolean } = {}): Promise<PoolsResponse> {
+export function fetchPools(
+  opts: { preset?: PresetKey; lpPreset?: LpPresetKey; force?: boolean } = {}
+): Promise<PoolsResponse> {
   const params = new URLSearchParams();
   if (opts.preset) params.set("preset", opts.preset);
+  if (opts.lpPreset) params.set("lp", opts.lpPreset);
   if (opts.force) params.set("force", "1");
   const qs = params.toString();
   return get<PoolsResponse>(`/api/pools${qs ? `?${qs}` : ""}`);

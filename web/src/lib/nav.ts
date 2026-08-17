@@ -1,6 +1,6 @@
-import { Activity, BarChart3, LayoutDashboard, Scale, Server, Table2 } from "lucide-react";
+import { Activity, BarChart3, Droplets, LayoutDashboard, Scale, Server, Table2 } from "lucide-react";
 
-export type ViewKey = "overview" | "screener" | "spreads" | "signals" | "analytics" | "system";
+export type ViewKey = "overview" | "screener" | "spreads" | "liquidity" | "signals" | "analytics" | "system";
 
 export interface NavItem {
   key: ViewKey;
@@ -36,6 +36,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Scale,
     hotkey: "p",
     blurb: "Tokenized stocks against the equities they track",
+  },
+  {
+    key: "liquidity",
+    label: "Liquidity",
+    path: "/app/liquidity",
+    icon: Droplets,
+    hotkey: "l",
+    blurb: "Fee income against LVR — is providing worth it?",
   },
   {
     key: "signals",

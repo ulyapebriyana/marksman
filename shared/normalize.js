@@ -5,6 +5,27 @@
 
 const MAJOR_QUOTE_SYMBOLS = new Set(["USDC", "USDT", "WETH", "WBTC", "DAI"]);
 
+/** Trailing fee tier in a GeckoTerminal pool name, e.g. "USDG / WETH 0.01%". */
+const FEE_TIER_IN_NAME = /(\d+(?:\.\d+)?)\s*%\s*$/;
+
+/**
+ * Fee tier in basis points, parsed from a pool name. This is the only place
+ * the tier is published for Robinhood Chain pools, and it matters a lot: an
+ * LP's entire fee income scales linearly with it, so assuming 30 bp for a
+ * 1 bp pool overstates yield by 30x.
+ *
+ * @param {string|null|undefined} name
+ * @returns {number|null} basis points, or null when the name carries no tier
+ */
+export function parseFeeTierBps(name) {
+  if (typeof name !== "string") return null;
+  const match = name.match(FEE_TIER_IN_NAME);
+  if (!match) return null;
+  const percent = Number(match[1]);
+  if (!Number.isFinite(percent) || percent <= 0 || percent > 100) return null;
+  return percent * 100;
+}
+
 function num(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -80,6 +101,10 @@ export function normalizeDexScreenerPair(raw, ctx = {}) {
 
     pairCreatedAt,
     ageMs: pairCreatedAt != null ? now - pairCreatedAt : null,
+
+    // DexScreener doesn't publish the tier; mergePoolSources backfills it from
+    // the GeckoTerminal copy of the same pool when one exists.
+    feeTierBps: null,
 
     labels: Array.isArray(raw?.labels) ? raw.labels : [],
 
@@ -162,6 +187,8 @@ export function normalizeGeckoTerminalPool(raw, ctx = {}) {
     pairCreatedAt,
     ageMs: pairCreatedAt != null ? now - pairCreatedAt : null,
 
+    feeTierBps: parseFeeTierBps(raw?.name),
+
     // GeckoTerminal doesn't surface honeypot/danger labels the way
     // DexScreener does; a pool discovered only here just won't get that
     // particular security signal until/unless DexScreener also has it.
@@ -185,7 +212,9 @@ export function normalizeGeckoTerminalPool(raw, ctx = {}) {
  * matching no DexScreener seed query (found only via GeckoTerminal's
  * chain-wide listing) still makes it into the scan. When the same address
  * appears in both, the DexScreener version wins — it carries honeypot/danger
- * `labels` that GeckoTerminal doesn't provide.
+ * `labels` that GeckoTerminal doesn't provide — except for `feeTierBps`,
+ * which only GeckoTerminal publishes (in the pool name) and which the winning
+ * DexScreener record would otherwise drop to null.
  *
  * @param {object[]} dexScreenerPools normalized via normalizeDexScreenerPair
  * @param {object[]} geckoTerminalPools normalized via normalizeGeckoTerminalPool
@@ -197,7 +226,13 @@ export function mergePoolSources(dexScreenerPools, geckoTerminalPools) {
     if (pool.address) byAddress.set(pool.address.toLowerCase(), pool);
   }
   for (const pool of dexScreenerPools) {
-    if (pool.address) byAddress.set(pool.address.toLowerCase(), pool);
+    if (!pool.address) continue;
+    const key = pool.address.toLowerCase();
+    const gecko = byAddress.get(key);
+    byAddress.set(key, {
+      ...pool,
+      feeTierBps: pool.feeTierBps ?? gecko?.feeTierBps ?? null,
+    });
   }
   return [...byAddress.values()];
 }

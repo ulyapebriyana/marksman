@@ -9,6 +9,7 @@ import { fetchBulkPools, getPoolOhlcv } from "../shared/dataSources/geckotermina
 import { fetchUnderlyingPrice } from "../shared/dataSources/equity.mjs";
 import { normalizeDexScreenerPair, normalizeGeckoTerminalPool, mergePoolSources, applyEnrichment } from "../shared/normalize.js";
 import { calculateScore, calculateRisk, PRESETS } from "../shared/scoring.js";
+import { calculateLpMetrics, calculateLpScore } from "../shared/lpScoring.js";
 import { mapWithConcurrency } from "../shared/concurrency.mjs";
 import { createTtlCache } from "../shared/ttlCache.mjs";
 import { sendTelegramAlert, formatPoolAlertText } from "./alerts.mjs";
@@ -121,12 +122,19 @@ export function createPipeline(config, deps) {
       })
     );
 
-    // 5. SCORE + RISK
+    // 5. SCORE + RISK — two independent verdicts per pool.
+    //
+    // `score` answers "is this worth trading?" and `lp` answers "is this worth
+    // providing liquidity to?". They are computed from the same inputs and
+    // routinely disagree: momentum lifts the trade score and is precisely the
+    // cost (LVR) that sinks the LP score. Both ship on every pool; neither is
+    // derived from the other.
     const scored = enriched.map((pool) => {
       const risk = calculateRisk(pool);
       const withRisk = { ...pool, risk };
       const score = calculateScore(withRisk);
-      return { ...withRisk, score };
+      const lp = calculateLpScore(withRisk, calculateLpMetrics(withRisk, { now }));
+      return { ...withRisk, score, lp };
     });
 
     // 6. DECIDE + 7. DETECT TRANSITIONS (against the fixed, operational preset)

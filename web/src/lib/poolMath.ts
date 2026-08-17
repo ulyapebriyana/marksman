@@ -237,6 +237,26 @@ const CSV_COLUMNS: { header: string; read: (p: Pool) => string | number | null }
   { header: "premium_pct", read: (p) => p.premiumPct },
   { header: "preset_passed", read: (p) => (p.presetGate.passed ? "yes" : "no") },
   { header: "preset_misses", read: (p) => p.presetGate.misses.join(" ") },
+
+  // Liquidity-provider view. `fee_apr_pct` is the headline number and
+  // `net_edge_apr_pct` is what survives LVR — exported together on purpose, so
+  // a spreadsheet can't quote the first without the second sitting next to it.
+  { header: "lp_score", read: (p) => p.lp?.total.toFixed(1) ?? null },
+  { header: "lp_verdict", read: (p) => p.lp?.metrics.verdict ?? null },
+  { header: "fee_tier_bps", read: (p) => p.lp?.metrics.feeTierBps ?? null },
+  { header: "fee_tier_known", read: (p) => (p.lp?.metrics.feeTierKnown ? "yes" : "no") },
+  { header: "turnover", read: (p) => p.lp?.metrics.turnover ?? null },
+  { header: "fee_apr_pct", read: (p) => p.lp?.metrics.feeAprPct ?? null },
+  { header: "sigma_daily_pct", read: (p) => p.lp?.metrics.sigmaDailyPct ?? null },
+  { header: "lvr_daily_pct", read: (p) => p.lp?.metrics.lvrDailyPct ?? null },
+  { header: "net_edge_bp_day", read: (p) => p.lp?.metrics.netEdgeDailyBps ?? null },
+  { header: "net_edge_margin_bp", read: (p) => p.lp?.metrics.netEdgeMarginBps ?? null },
+  { header: "net_edge_apr_pct", read: (p) => p.lp?.metrics.netEdgeAprPct ?? null },
+  { header: "flow_imbalance", read: (p) => p.lp?.metrics.flowImbalance ?? null },
+  { header: "apr_after_ticket_pct", read: (p) => p.lp?.metrics.projectedAprPct ?? null },
+  { header: "lp_caveats", read: (p) => p.lp?.metrics.caveats.join(" ") ?? null },
+  { header: "lp_gate_passed", read: (p) => (p.lpGate?.passed ? "yes" : "no") },
+  { header: "lp_gate_misses", read: (p) => p.lpGate?.misses.join(" ") ?? null },
 ];
 
 function csvCell(value: string | number | null): string {

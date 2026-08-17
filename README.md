@@ -32,6 +32,8 @@ server/            Express app + scan pipeline orchestration (I/O)
 
 shared/             Pure, I/O-free logic + data-source adapters
   scoring.js            calculateScore, calculateRisk, evaluatePreset, PRESETS (+ .test.js)
+  lpScoring.js          calculateLpMetrics, calculateLpScore, evaluateLpPreset,
+                        LP_PRESETS — the liquidity-provider model (+ .test.js)
   normalize.js          raw DexScreener/GeckoTerminal shapes -> one internal pool shape, mergePoolSources (+ .test.js)
   signalTransitions.js  getPoolSignalStatus, createSignalTracker (+ .test.js)
   concurrency.mjs       bounded-concurrency async mapper (+ .test.js)
@@ -61,9 +63,9 @@ web/                Frontend (Vite + React)
 ### Routes
 
 Two surfaces, one bundle. `/` is the landing page; everything under `/app` is
-the console (`/app`, `/app/screener`, `/app/spreads`, `/app/signals`,
-`/app/analytics`, `/app/system`). Unknown paths fall back to the landing page,
-and unknown `/app/*` paths fall back to the overview.
+the console (`/app`, `/app/screener`, `/app/spreads`, `/app/liquidity`,
+`/app/signals`, `/app/analytics`, `/app/system`). Unknown paths fall back to the
+landing page, and unknown `/app/*` paths fall back to the overview.
 
 `server/index.mjs` already serves `web/dist/index.html` for any non-`/api` path,
 so deep links work in production without extra configuration.
@@ -131,12 +133,99 @@ npm test                 # Vitest — 94 tests over shared/ and server/
 | `PORT` | `8787` | HTTP port |
 | `SCAN_INTERVAL_SECONDS` | `60` | Background scan cadence + cache TTL |
 | `ACTIVE_PRESET` | `marksman` | Operational preset driving signal transitions/history/alerts (`steady` or `marksman`) — independent of what a viewer browses in the UI |
+| `LP_PRESET` | `carry` | Default liquidity-provider posture (`harvest`, `carry`, or `vault`) when a client doesn't pass `?lp=`. Browse-only — it never drives signals or alerts |
 | `STOCK_API_PROVIDER` | `finnhub` | `finnhub`, `polygon`, or `alphavantage` |
 | `STOCK_API_KEY` | _(empty)_ | Required to compute tokenized-stock premium/discount. Without it, `premiumPct` stays `null` and the UI shows a "degraded" banner for the equity source — everything else still works |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | _(empty)_ | Optional. Without these, `/api/alert` responds `{ sent: false, reason: "telegram_not_configured" }` rather than erroring |
 | `AUTO_ALERT_ON_HOT` | `false` | If `true`, automatically sends a Telegram alert whenever a pool transitions to `hot` (in addition to the manual `POST /api/alert`) |
 | `DEXSCREENER_CHAIN_ID` / `GECKOTERMINAL_NETWORK` | `robinhood` | Chain slugs, confirmed live against both APIs |
 | `TOKEN_MAP_PATH` / `HISTORY_FILE_PATH` | `data/token-map.json` / `data/signal-history.json` | Override file locations |
+
+## The liquidity-provider model
+
+`shared/lpScoring.js` is a second, independent scoring axis that answers a
+different question from `scoring.js` — and disagrees with it on purpose.
+
+| | `scoring.js` (`score`) | `lpScoring.js` (`lp`) |
+|---|---|---|
+| Question | Should I **trade** this pool? | Should I **provide liquidity** here? |
+| Momentum | Rewarded — it's the move you're catching | **Penalised** — it's the mechanism that picks you off |
+| Freshness | Rewarded — get in before the arb closes | **Penalised** — APR collapses as capital arrives |
+| Premium gap | The opportunity | A drag you eat on reversion |
+
+A pool can legitimately score 85 as a trade and 20 as an LP position. Both
+verdicts ship on every pool from `/api/pools`; neither is derived from the
+other. **Don't try to reconcile them.**
+
+### The economics
+
+```
+fee income  = turnover x feeTier          what the pool pays you
+LVR         = sigma^2 / 8 per day         what being the passive side costs
+net edge    = fee income - LVR            the only number that decides it
+```
+
+LVR ("loss versus rebalancing", Milionis et al. 2022) is the cost of quoting a
+stale price to informed flow. It is **not** impermanent loss: IL is path-
+dependent and reverses if price returns, while LVR is realised continuously and
+never comes back. If fee income doesn't clear it, holding the pair would have
+beaten providing it.
+
+### Why so much reads "inconclusive"
+
+Every net edge ships with a 95% error band combining two sources:
+
+- **statistical** — the volatility estimate from ~24 hourly closes,
+  `SE(s²) = s²·sqrt(2/(n−1))`, doubled.
+- **systematic** — the fee tier, when it isn't published. That band is
+  `assumedFeeTierRelError` (±50%) and is deliberately *not* doubled; doubling it
+  would make a "covers" verdict unreachable by construction.
+
+When the edge is smaller than that band the verdict is `inconclusive` — a real
+answer, not a missing one. It must never be rendered as a pass.
+
+### Fee tiers matter more than anything else here
+
+Fee income scales linearly with the tier, so assuming 30 bp for a 1 bp pool
+overstates yield **30x**. Neither DexScreener nor GeckoTerminal exposes a fee
+field, but GeckoTerminal suffixes it onto the pool name (`"USDG / WETH 0.01%"`),
+and `parseFeeTierBps()` in `normalize.js` reads it from there — typically
+resolving ~75% of a scan. `mergePoolSources()` backfills the tier onto the
+DexScreener copy of a pool, which would otherwise win the merge and drop it.
+Pools with no tier in the name fall back to 30 bp, carry a `fee_tier_assumed`
+caveat, and get the wider error band above.
+
+### What else it measures
+
+- **Range bands** — tight/balanced/wide at 1σ/1.5σ/2σ over the horizon, each with
+  a hold probability. These are *path* probabilities via the reflection
+  principle, so a ±1σ band holds ~36% of the time, not the ~68% the bell curve
+  suggests. Suggested split is 50/30/20.
+- **Dilution** — the APR a reference ticket actually receives after its own
+  deposit dilutes the pool, plus the deposit size that would halve the rate
+  (which is just current TVL).
+- **Flow imbalance** — `|buys − sells| / total`. Balanced two-way flow means
+  you earn the spread from both sides; one-directional flow means you're the
+  exit liquidity.
+- **Equity session hazard** (tokenized stocks only) — the token trades 24/7
+  while the market it tracks is shut most of the week, so news accumulates and
+  arrives as a jump at the open. `equitySessionState()` flags overnight and
+  weekend exposure. Market holidays are **not** modelled.
+- **`apr_mirage`** — a triple-digit APR whose own LVR eats it. The single most
+  common way an LP loses money while watching a number go up.
+
+### Postures
+
+`LP_PRESETS.harvest` / `.carry` / `.vault` gate on measured numbers (turnover,
+TVL, σ, net edge, flow imbalance, allowed verdicts). All three reject a pool
+whose volatility couldn't be measured — no benefit of the doubt. The posture is
+browse-only: it gates the Liquidity view and never drives signals, history, or
+alerts. `LP_PRESET` sets the server default; `?lp=` overrides per request and
+re-gates the cached scan without re-scanning.
+
+**Everything here is an estimate from public aggregate data — 24h volume,
+hourly closes, txn counts — not swap-level accounting.** `metrics.caveats` says
+per pool what each number rests on.
 
 ## Tuning scores, risk, and presets
 
@@ -165,7 +254,7 @@ tier), so a tuning change that breaks an assumption will fail loudly.
 
 | Endpoint | Notes |
 |---|---|
-| `GET /api/pools?preset=&force=` | Scanned, scored, annotated pools + meta (scannedAt, sourceHealth, active/requested preset). `force=1` bypasses the cache. Preset switching is free — it re-evaluates the cached scan, it doesn't re-scan. |
+| `GET /api/pools?preset=&lp=&force=` | Scanned, scored, annotated pools + meta (scannedAt, sourceHealth, active/requested preset). Each pool carries both `score`/`presetGate` (trade view) and `lp`/`lpGate` (liquidity view). `force=1` bypasses the cache. Switching either preset is free — it re-evaluates the cached scan, it doesn't re-scan. |
 | `GET /api/status` | Runtime health, last scan summary, which optional integrations are configured. |
 | `GET /api/history?limit=` | Recent signal transitions (newest first), capped at 250 total. |
 | `POST /api/alert` `{ address }` | Sends a manual Telegram alert for a pool from the current cache. 404 if the pool isn't in the last scan. |

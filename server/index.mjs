@@ -9,6 +9,7 @@ import { createHistoryStore } from "./historyStore.mjs";
 import { createPipeline } from "./pipeline.mjs";
 import { sendTelegramAlert, formatPoolAlertText } from "./alerts.mjs";
 import { PRESETS } from "../shared/scoring.js";
+import { LP_PRESETS, evaluateLpPreset } from "../shared/lpScoring.js";
 import { createSignalTracker, annotatePoolWithPreset } from "../shared/signalTransitions.js";
 import { UpstreamError } from "../shared/dataSources/httpClient.mjs";
 
@@ -38,13 +39,25 @@ async function main() {
     return { key, preset: PRESETS[key] };
   }
 
+  function resolveLpPreset(req) {
+    const key =
+      typeof req.query.lp === "string" && req.query.lp in LP_PRESETS ? req.query.lp : config.defaultLpPresetKey;
+    return { key, preset: LP_PRESETS[key] };
+  }
+
   app.get("/api/pools", async (req, res) => {
     try {
       const force = req.query.force === "1";
       const result = await scanCache.getOrRun(pipeline.runScan, { force });
       const { key: requestedPresetKey, preset } = resolvePreset(req);
+      const { key: requestedLpPresetKey, preset: lpPreset } = resolveLpPreset(req);
 
-      const pools = result.pools.map((p) => annotatePoolWithPreset(p, preset));
+      // Both gates are re-evaluated per request against the cached scan, so
+      // switching either posture is free — it never triggers a re-scan.
+      const pools = result.pools.map((p) => ({
+        ...annotatePoolWithPreset(p, preset),
+        lpGate: evaluateLpPreset(p, lpPreset),
+      }));
 
       res.set("Cache-Control", "no-store");
       res.json({
@@ -54,6 +67,7 @@ async function main() {
           sourceHealth: result.sourceHealth,
           activePreset: config.activePresetKey,
           requestedPreset: requestedPresetKey,
+          requestedLpPreset: requestedLpPresetKey,
           poolCount: pools.length,
         },
       });
@@ -70,6 +84,8 @@ async function main() {
       uptimeSeconds: Math.round(process.uptime()),
       activePreset: config.activePresetKey,
       presets: Object.keys(PRESETS),
+      defaultLpPreset: config.defaultLpPresetKey,
+      lpPresets: Object.keys(LP_PRESETS),
       scanIntervalSeconds: config.scanIntervalMs / 1000,
       lastScan: cached
         ? { scannedAt: cached.scannedAt, poolCount: cached.pools.length, sourceHealth: cached.sourceHealth }

@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchHistory, fetchPools, fetchStatus, postAlert } from "../api/client";
-import type { PresetKey } from "../api/types";
+import type { LpPresetKey, PresetKey } from "../api/types";
 
-export function usePools(preset: PresetKey) {
+/**
+ * `lpPreset` only re-gates the LP view; callers that don't render it (the
+ * landing page) can omit it and share the default's cache entry.
+ */
+export function usePools(preset: PresetKey, lpPreset: LpPresetKey = "carry") {
   return useQuery({
-    queryKey: ["pools", preset],
-    queryFn: () => fetchPools({ preset }),
+    queryKey: ["pools", preset, lpPreset],
+    queryFn: () => fetchPools({ preset, lpPreset }),
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
     // Keep the previous preset's rows on screen while the new one resolves —
@@ -15,12 +19,12 @@ export function usePools(preset: PresetKey) {
   });
 }
 
-export function useForceRescan(preset: PresetKey) {
+export function useForceRescan(preset: PresetKey, lpPreset: LpPresetKey) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => fetchPools({ preset, force: true }),
+    mutationFn: () => fetchPools({ preset, lpPreset, force: true }),
     onSuccess: (data) => {
-      queryClient.setQueryData(["pools", preset], data);
+      queryClient.setQueryData(["pools", preset, lpPreset], data);
       queryClient.invalidateQueries({ queryKey: ["status"] });
       queryClient.invalidateQueries({ queryKey: ["history"] });
     },

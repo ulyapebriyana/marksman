@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Moon, RefreshCw, Star, Sun, Trash2 } from "lucide-react";
-import type { Pool, PresetKey } from "../api/types";
+import { Download, Droplets, Moon, RefreshCw, Star, Sun, Trash2 } from "lucide-react";
+import type { LpPresetKey, Pool, PresetKey } from "../api/types";
 import { useForceRescan, useHistory, usePools, useStatus } from "../hooks/usePools";
 import { useWatchlist } from "../hooks/useWatchlist";
 import { useHotkeys, useLeaderKey } from "../hooks/useHotkeys";
@@ -19,6 +19,7 @@ import { DegradedSourceBanner, DisclaimerBanner, ErrorState, TableSkeleton } fro
 import { OverviewView } from "../components/views/OverviewView";
 import { ScreenerView } from "../components/views/ScreenerView";
 import { SpreadsView } from "../components/views/SpreadsView";
+import { LiquidityView } from "../components/views/LiquidityView";
 import { SignalsView } from "../components/views/SignalsView";
 import { SystemView } from "../components/views/SystemView";
 
@@ -29,6 +30,9 @@ const AnalyticsView = lazy(() =>
 );
 
 const isPreset = (v: unknown): v is PresetKey => v === "steady" || v === "marksman";
+const isLpPreset = (v: unknown): v is LpPresetKey => v === "harvest" || v === "carry" || v === "vault";
+
+const LP_PRESET_CYCLE: LpPresetKey[] = ["harvest", "carry", "vault"];
 
 export default function Console() {
   const { path, navigate } = useRouter();
@@ -39,6 +43,9 @@ export default function Console() {
   const [preset, setPreset] = useState<PresetKey>(() =>
     readStored<PresetKey>(STORAGE_KEYS.preset, "marksman", isPreset)
   );
+  const [lpPreset, setLpPreset] = useState<LpPresetKey>(() =>
+    readStored<LpPresetKey>(STORAGE_KEYS.lpPreset, "carry", isLpPreset)
+  );
   const [filters, setFilters] = useState<Filters>(() =>
     readStored<Filters>(STORAGE_KEYS.filters, DEFAULT_FILTERS, (v): v is Filters => typeof v === "object" && v !== null)
   );
@@ -48,10 +55,10 @@ export default function Console() {
     readStored<boolean>(STORAGE_KEYS.railCollapsed, false, (v): v is boolean => typeof v === "boolean")
   );
 
-  const poolsQuery = usePools(preset);
+  const poolsQuery = usePools(preset, lpPreset);
   const historyQuery = useHistory();
   const statusQuery = useStatus();
-  const rescan = useForceRescan(preset);
+  const rescan = useForceRescan(preset, lpPreset);
   const watchlist = useWatchlist();
 
   const pools = useMemo(() => poolsQuery.data?.pools ?? [], [poolsQuery.data]);
@@ -61,6 +68,7 @@ export default function Console() {
   const { progress, remaining } = useScanProgress(meta?.scannedAt, statusQuery.data?.scanIntervalSeconds ?? 60);
 
   useEffect(() => writeStored(STORAGE_KEYS.preset, preset), [preset]);
+  useEffect(() => writeStored(STORAGE_KEYS.lpPreset, lpPreset), [lpPreset]);
   useEffect(() => writeStored(STORAGE_KEYS.filters, filters), [filters]);
   useEffect(() => writeStored(STORAGE_KEYS.railCollapsed, railCollapsed), [railCollapsed]);
 
@@ -136,6 +144,18 @@ export default function Console() {
         run: () => setPreset(preset === "marksman" ? "steady" : "marksman"),
       },
       {
+        id: "lp-preset",
+        label: `Cycle the LP posture (now ${lpPreset})`,
+        hint: "Harvest → Carry → Vault. Re-gates the cached scan.",
+        group: "Action",
+        icon: <Droplets size={15} aria-hidden />,
+        run: () => {
+          const next = LP_PRESET_CYCLE[(LP_PRESET_CYCLE.indexOf(lpPreset) + 1) % LP_PRESET_CYCLE.length];
+          setLpPreset(next);
+          navigate("/app/liquidity");
+        },
+      },
+      {
         id: "export",
         label: "Export the current view to CSV",
         hint: "Respects the filters you have applied",
@@ -165,7 +185,7 @@ export default function Console() {
           ]
         : []),
     ],
-    [preset, theme, handleRescan, handleExport, toggleTheme, watchlist, showToast]
+    [preset, lpPreset, theme, handleRescan, handleExport, toggleTheme, watchlist, showToast, navigate]
   );
 
   /* --- render ------------------------------------------------------------ */
@@ -204,6 +224,19 @@ export default function Console() {
           </div>
         ) : (
           <SpreadsView pools={pools} onSelectPool={setSelectedPool} />
+        );
+      case "liquidity":
+        return showLoading ? (
+          <div className="panel">
+            <TableSkeleton rows={6} />
+          </div>
+        ) : (
+          <LiquidityView
+            pools={pools}
+            lpPreset={lpPreset}
+            onLpPresetChange={setLpPreset}
+            onSelectPool={setSelectedPool}
+          />
         );
       case "signals":
         return <SignalsView history={history} isLoading={historyQuery.isLoading} />;

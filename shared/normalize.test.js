@@ -1,4 +1,28 @@
 import { describe, it, expect } from "vitest";
+import { parseFeeTierBps } from "./normalize.js";
+
+describe("parseFeeTierBps", () => {
+  it("reads the tier GeckoTerminal suffixes onto the pool name", () => {
+    expect(parseFeeTierBps("USDG / WETH 0.01%")).toBe(1);
+    expect(parseFeeTierBps("CASHCAT / WETH 0.3%")).toBe(30);
+    expect(parseFeeTierBps("HOODGAME / WETH 0.25%")).toBe(25);
+  });
+
+  it("returns null when the name carries no tier", () => {
+    expect(parseFeeTierBps("WETH / USDG")).toBeNull();
+    expect(parseFeeTierBps(null)).toBeNull();
+    expect(parseFeeTierBps(undefined)).toBeNull();
+  });
+
+  it("rejects implausible percentages rather than trusting them", () => {
+    expect(parseFeeTierBps("SCAM / WETH 400%")).toBeNull();
+    expect(parseFeeTierBps("ODD / WETH 0%")).toBeNull();
+  });
+
+  it("does not mistake a mid-name percentage for the tier", () => {
+    expect(parseFeeTierBps("UP 50% TOKEN / WETH")).toBeNull();
+  });
+});
 import { normalizeDexScreenerPair, normalizeGeckoTerminalPool, mergePoolSources, applyEnrichment } from "./normalize.js";
 
 const NOW = Date.parse("2026-08-06T12:00:00Z");

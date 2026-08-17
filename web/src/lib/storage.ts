@@ -22,6 +22,7 @@ export function writeStored(key: string, value: unknown): void {
 
 export const STORAGE_KEYS = {
   preset: "marksman:preset",
+  lpPreset: "marksman:lp-preset",
   theme: "marksman:theme",
   watchlist: "marksman:watchlist",
   filters: "marksman:filters",
