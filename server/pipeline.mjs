@@ -10,6 +10,7 @@ import { fetchUnderlyingPrice } from "../shared/dataSources/equity.mjs";
 import { normalizeDexScreenerPair, normalizeGeckoTerminalPool, mergePoolSources, applyEnrichment } from "../shared/normalize.js";
 import { calculateScore, calculateRisk, PRESETS } from "../shared/scoring.js";
 import { calculateLpMetrics, calculateLpScore } from "../shared/lpScoring.js";
+import { runFunnel } from "../shared/funnelScoring.js";
 import { mapWithConcurrency } from "../shared/concurrency.mjs";
 import { createTtlCache } from "../shared/ttlCache.mjs";
 import { sendTelegramAlert, formatPoolAlertText } from "./alerts.mjs";
@@ -137,9 +138,28 @@ export function createPipeline(config, deps) {
       return { ...withRisk, score, lp };
     });
 
+    // 5b. FUNNEL — the practitioner security-first gate (security -> volume
+    // sustainability -> fee/TVL efficiency -> pair quality -> range
+    // guidance), computed alongside `score`/`lp` rather than derived from
+    // them. Pair-quality needs to compare a pool against every other pool
+    // sharing its base token (different fee tiers/DEXes), hence the grouping.
+    const byBaseToken = new Map();
+    for (const pool of scored) {
+      const key = pool.baseToken?.address;
+      if (!key) continue;
+      if (!byBaseToken.has(key)) byBaseToken.set(key, []);
+      byBaseToken.get(key).push(pool);
+    }
+    const withFunnel = scored.map((pool) => {
+      const key = pool.baseToken?.address;
+      const siblingPools = key ? byBaseToken.get(key) : [];
+      const funnel = runFunnel(pool, { siblingPools, lpRanges: pool.lp?.metrics?.ranges ?? null });
+      return { ...pool, funnel };
+    });
+
     // 6. DECIDE + 7. DETECT TRANSITIONS (against the fixed, operational preset)
     const activePreset = PRESETS[config.activePresetKey];
-    const events = signalTracker.detectTransitions(scored, activePreset, now);
+    const events = signalTracker.detectTransitions(withFunnel, activePreset, now);
 
     for (const event of events) {
       const symbol = event.pool?.baseToken?.symbol ?? event.address;
@@ -164,7 +184,7 @@ export function createPipeline(config, deps) {
       }
     }
 
-    return { pools: scored, scannedAt: now, sourceHealth, activePresetKey: config.activePresetKey };
+    return { pools: withFunnel, scannedAt: now, sourceHealth, activePresetKey: config.activePresetKey };
   }
 
   return { runScan };

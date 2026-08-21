@@ -83,6 +83,78 @@ export interface TokenInfo {
   name: string | null;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Funnel — the practitioner security-first gate                              */
+/* -------------------------------------------------------------------------- */
+
+export type FunnelVerdict = "candidate" | "watch" | "rejected";
+export type FunnelCheckStatus = "pass" | "fail" | "unverifiable" | "reminder";
+
+export interface FunnelCheck {
+  key: string;
+  label: string;
+  status: FunnelCheckStatus;
+  detail: string;
+}
+
+export interface FunnelSecurity {
+  passed: boolean;
+  autoFailReasons: string[];
+  checks: FunnelCheck[];
+  unverifiableCount: number;
+}
+
+export interface FunnelVolume {
+  passed: boolean;
+  continuity: "sustained" | "building" | "spike_only" | "no_data";
+  metrics: {
+    m5: number;
+    h1: number;
+    h24: number;
+    runRate5m: number | null;
+    runRate1h: number | null;
+    spikeRatio: number | null;
+    txns1h: number;
+  };
+  reasons: string[];
+}
+
+export interface FunnelFeeTvl {
+  feeTierBps: number;
+  feeTierKnown: boolean;
+  dailyFeeUsd: number | null;
+  feeToTvlPct: number | null;
+  volumeToTvlRatio: number | null;
+  bucket: "weak" | "healthy" | "strong" | "suspicious" | "unknown";
+}
+
+export interface FunnelPairQuality {
+  quoteSymbol: string;
+  isStablePair: boolean;
+  poolCountForToken: number;
+  isLargestTvlForToken: boolean;
+  tvlRank: number | null;
+}
+
+export interface FunnelRangeGuidance {
+  tier: "established" | "strong_but_volatile" | "new" | "unclassified";
+  suggestedLowerRangePct: [number, number] | null;
+  note: string;
+}
+
+export interface Funnel {
+  verdict: FunnelVerdict;
+  stagesPassed: string[];
+  failedAt: string | null;
+  caveats: string[];
+  security: FunnelSecurity;
+  volume: FunnelVolume;
+  feeTvl: FunnelFeeTvl;
+  pairQuality: FunnelPairQuality;
+  range: FunnelRangeGuidance;
+  checklist: FunnelCheck[];
+}
+
 export interface ScoreBreakdownItem {
   score: number;
   max: number;
@@ -146,6 +218,8 @@ export interface Pool {
   /** The liquidity-provider verdict. Deliberately disagrees with `score`. */
   lp: LpScore;
   lpGate: LpGate;
+  /** The practitioner security-first funnel: security -> volume -> fee/TVL -> pair quality -> range. */
+  funnel: Funnel;
 }
 
 export interface SourceHealth {

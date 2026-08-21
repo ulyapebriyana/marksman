@@ -34,6 +34,8 @@ shared/             Pure, I/O-free logic + data-source adapters
   scoring.js            calculateScore, calculateRisk, evaluatePreset, PRESETS (+ .test.js)
   lpScoring.js          calculateLpMetrics, calculateLpScore, evaluateLpPreset,
                         LP_PRESETS — the liquidity-provider model (+ .test.js)
+  funnelScoring.js      runFunnel and friends — the practitioner security-first
+                        funnel (+ .test.js), see "The practitioner funnel" below
   normalize.js          raw DexScreener/GeckoTerminal shapes -> one internal pool shape, mergePoolSources (+ .test.js)
   signalTransitions.js  getPoolSignalStatus, createSignalTracker (+ .test.js)
   concurrency.mjs       bounded-concurrency async mapper (+ .test.js)
@@ -63,7 +65,7 @@ web/                Frontend (Vite + React)
 ### Routes
 
 Two surfaces, one bundle. `/` is the landing page; everything under `/app` is
-the console (`/app`, `/app/screener`, `/app/spreads`, `/app/liquidity`,
+the console (`/app`, `/app/screener`, `/app/funnel`, `/app/spreads`, `/app/liquidity`,
 `/app/signals`, `/app/analytics`, `/app/system`). Unknown paths fall back to the
 landing page, and unknown `/app/*` paths fall back to the overview.
 
@@ -227,6 +229,79 @@ re-gates the cached scan without re-scanning.
 hourly closes, txn counts — not swap-level accounting.** `metrics.caveats` says
 per pool what each number rests on.
 
+## The practitioner funnel
+
+`shared/funnelScoring.js` (`runFunnel`, shipped on every pool as `.funnel`) is
+a third, independent lens — encoding a pattern observed across several X
+accounts publishing LP P&L (self-reported, not independently audited
+on-chain): screen for **safety before yield**, in a fixed order:
+
+```
+1. token security       -> auto-fail on what's actually checkable
+2. volume sustainability -> a 5m spike with nothing behind it is not real flow
+3. fee/TVL efficiency    -> volume x feeTier / TVL, bucketed
+4. pair quality          -> stablecoin pair, largest-TVL pool for the token
+5. range guidance        -> a maturity-tier sanity check, not the primary range
+```
+
+It is a **sequential gate, not a weighted score** — a pool that fails stage 1
+or 2 is `rejected` outright regardless of how good stages 3–4 look. That
+ordering is the entire point of the methodology: a 5,000%-APR pool that rugs
+80% is still a large loss no matter how good the fee number looked on the way
+in. `verdict` is `candidate` / `watch` / `rejected`; `failedAt` names the
+first stage that didn't clear.
+
+### The data-availability gap, stated plainly
+
+The methodology's security stage assumes access to on-chain contract
+introspection and holder analytics (GoPlus, Honeypot.is, TokenSniffer,
+bundle/holder-concentration checkers). **Robinhood Chain (chainId 4663) isn't
+indexed by any of those as of this writing**, and neither DexScreener nor
+GeckoTerminal expose contract verification, mint/blacklist/pause functions,
+holder concentration, or bundled supply. Rather than fabricate a pass/fail for
+checks the pipeline cannot actually run, `evaluateTokenSecurity()` marks every
+one of them `unverifiable` with a pointer to check by hand — never a silent
+pass. Only what's genuinely checkable (a DexScreener danger/honeypot label, a
+hard liquidity floor) can fail a pool automatically. The UI surfaces this
+directly rather than implying a security audit that didn't happen.
+
+The same honesty applies to the checklist's cumulative-fees check (the
+methodology's "≥1 ETH total fees" reference) — there's no cumulative-fee
+history or ETH price feed here, so it reports the closest available proxy
+(today's estimated daily fee income) rather than a fabricated ETH figure.
+
+### Why fee/TVL buckets the way it does
+
+```
+fee pool per day = volume24h x feeTier
+fee/TVL           = fee pool per day / TVL
+```
+
+| `volumeToTvlRatio` | bucket | reading |
+|---|---|---|
+| < 0.25x | `weak` | usually not worth it |
+| 0.25x – 1x | `healthy` | sustainable if it holds for a few days |
+| 1x – 5x | `strong` | high fee potential |
+| > 5x | `suspicious` | very attractive on paper, but treat as a wash-trading/thin-TVL suspect — **never auto-promoted to `candidate`** |
+
+### Range guidance is contextual, not primary
+
+`getMaturityRangeGuidance()` reproduces the methodology's fixed percentage
+tiers by token maturity (market cap + age) as a rule-of-thumb sanity check.
+The number to actually size a position on is the **realized-volatility**
+range in the Liquidity view (`pool.lp.metrics.ranges`) — it's measured from
+real hourly closes rather than a fixed percentage, which the funnel's range
+stage says explicitly in its `note`.
+
+### Pair quality needs siblings
+
+Stage 4 checks whether a pool is the largest-TVL pool among every other pool
+sharing the same base token (different fee tiers/DEXes) — the "check every
+fee tier, pick the deepest one with real volume" step. `server/pipeline.mjs`
+groups the scanned pools by `baseToken.address` before calling `runFunnel()`
+so each pool can see its siblings; calling `runFunnel()` directly (as the
+tests do) needs `siblingPools` passed in explicitly.
+
 ## Tuning scores, risk, and presets
 
 Everything is a named constant in `shared/scoring.js` — no magic numbers
@@ -254,7 +329,7 @@ tier), so a tuning change that breaks an assumption will fail loudly.
 
 | Endpoint | Notes |
 |---|---|
-| `GET /api/pools?preset=&lp=&force=` | Scanned, scored, annotated pools + meta (scannedAt, sourceHealth, active/requested preset). Each pool carries both `score`/`presetGate` (trade view) and `lp`/`lpGate` (liquidity view). `force=1` bypasses the cache. Switching either preset is free — it re-evaluates the cached scan, it doesn't re-scan. |
+| `GET /api/pools?preset=&lp=&force=` | Scanned, scored, annotated pools + meta (scannedAt, sourceHealth, active/requested preset). Each pool carries `score`/`presetGate` (trade view), `lp`/`lpGate` (liquidity view), and `funnel` (the practitioner security-first gate — computed once per scan, not re-evaluated per posture). `force=1` bypasses the cache. Switching either preset is free — it re-evaluates the cached scan, it doesn't re-scan. |
 | `GET /api/status` | Runtime health, last scan summary, which optional integrations are configured. |
 | `GET /api/history?limit=` | Recent signal transitions (newest first), capped at 250 total. |
 | `POST /api/alert` `{ address }` | Sends a manual Telegram alert for a pool from the current cache. 404 if the pool isn't in the last scan. |

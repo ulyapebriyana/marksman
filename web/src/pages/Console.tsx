@@ -18,6 +18,7 @@ import { PoolDrawer } from "../components/PoolDrawer";
 import { DegradedSourceBanner, DisclaimerBanner, ErrorState, TableSkeleton } from "../components/ui/states";
 import { OverviewView } from "../components/views/OverviewView";
 import { ScreenerView } from "../components/views/ScreenerView";
+import { FunnelView } from "../components/views/FunnelView";
 import { SpreadsView } from "../components/views/SpreadsView";
 import { LiquidityView } from "../components/views/LiquidityView";
 import { SignalsView } from "../components/views/SignalsView";
@@ -216,6 +217,14 @@ export default function Console() {
             filters={filters}
             onFiltersChange={setFilters}
           />
+        );
+      case "funnel":
+        return showLoading ? (
+          <div className="panel">
+            <TableSkeleton rows={6} />
+          </div>
+        ) : (
+          <FunnelView pools={pools} onSelectPool={setSelectedPool} />
         );
       case "spreads":
         return showLoading ? (

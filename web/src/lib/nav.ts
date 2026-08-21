@@ -1,6 +1,6 @@
-import { Activity, BarChart3, Droplets, LayoutDashboard, Scale, Server, Table2 } from "lucide-react";
+import { Activity, BarChart3, Droplets, Filter, LayoutDashboard, Scale, Server, Table2 } from "lucide-react";
 
-export type ViewKey = "overview" | "screener" | "spreads" | "liquidity" | "signals" | "analytics" | "system";
+export type ViewKey = "overview" | "screener" | "funnel" | "spreads" | "liquidity" | "signals" | "analytics" | "system";
 
 export interface NavItem {
   key: ViewKey;
@@ -28,6 +28,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Table2,
     hotkey: "s",
     blurb: "Every pool, filtered and sorted",
+  },
+  {
+    key: "funnel",
+    label: "Funnel",
+    path: "/app/funnel",
+    icon: Filter,
+    hotkey: "f",
+    blurb: "Security first, then volume, fee/TVL, and pair quality",
   },
   {
     key: "spreads",

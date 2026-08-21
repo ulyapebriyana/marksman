@@ -106,7 +106,8 @@ export function Rail({
 export function MobileNav({ view }: { view: ViewKey }) {
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-ink-1/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 grid border-t border-line bg-ink-1/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
+      style={{ gridTemplateColumns: `repeat(${NAV_ITEMS.length}, minmax(0, 1fr))` }}
       aria-label="Console views"
     >
       {NAV_ITEMS.map((item) => {
