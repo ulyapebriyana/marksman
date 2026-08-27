@@ -145,6 +145,7 @@ npm test                 # Vitest — 94 tests over shared/ and server/
 | `SOCIAL_PROVIDER` / `SOCIAL_API_KEY` | _(empty)_ | `twitterapi` (twitterapi.io) or `x` (official X API v2). Powers the team/catalysts/community/alpha sections of the token report. Unset means those sections say "not connected" — they never render as "nobody is talking about this" |
 | `ANTHROPIC_API_KEY` / `LLM_MODEL` | _(empty)_ / `claude-opus-5` | Synthesises the raw posts above into structured Indonesian sections. Unset means the report still ships its deterministic narrative plus the raw mentions |
 | `TOKEN_REPORT_TTL_SECONDS` | `300` | How long one token's report is cached. Deliberately longer than the scan cadence — a report costs up to six upstream calls plus an LLM round-trip |
+| `GECKO_TOKEN_TTL_SECONDS` | `1800` | How long the GeckoTerminal half of a report (holder distribution, deployer holding, launchpad state) is cached — see "Living with the rate limit" below |
 
 ## The liquidity-provider model
 
@@ -390,6 +391,30 @@ Valuation prefers market cap and falls back to FDV, and `valuationBasis` says
 which one it used — FDV on a token with unpublished circulating supply is the
 value of the entire supply, which the narrative states outright rather than
 letting the reader assume otherwise.
+
+### Living with the rate limit
+
+GeckoTerminal's free tier allows roughly 30 requests a minute, and this
+project's own background scan spends most of that in a burst every cycle
+(`bulkScan.geckoPages` + `enrich.geckoShortlistN` in `server/config.mjs`).
+Measured from the production box, that leaves **about half of every minute
+returning 429** to anything else — which is where an on-demand token report
+lands.
+
+Retrying inside the page load does not fix this: the outage lasts tens of
+seconds, far longer than a reader will wait for a page. What fixes it is not
+needing the call. The GeckoTerminal half of a report gets **its own cache with
+a much longer TTL** (`GECKO_TOKEN_TTL_SECONDS`, 30 minutes) than the report
+itself, because holder distribution and deployer holding change on the order
+of a day — the API publishes its own `last_updated` and it moves daily. One
+success serves every request for that token for the next half hour, so only
+the first request after expiry can be unlucky. Failures are negative-cached for
+15 seconds, not 30 minutes, so a retry is available almost immediately.
+
+When it still misses, the report says which fields are missing **and why**,
+and distinguishes that from a token that genuinely publishes nothing — see
+above. A paid CoinGecko plan raises the limit and would remove the problem
+entirely; nothing here requires one.
 
 ### The verdict escalates rather than averages
 

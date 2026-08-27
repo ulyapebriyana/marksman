@@ -33,7 +33,7 @@ const DEFAULT_TIMEOUT_MS = 8000;
  * Only 429 is retried. A 404 is a real answer and a 5xx won't be fixed by
  * asking again 1.2 seconds later.
  */
-async function withRateLimitRetry(fn, { retries = 2, delayMs = 1200 } = {}) {
+async function withRateLimitRetry(fn, { retries = 2, delayMs = 1500 } = {}) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();

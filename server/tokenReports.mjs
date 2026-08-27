@@ -49,6 +49,24 @@ export function createTokenReportService(config) {
     failureTtlMs: Math.min(30_000, config.tokenReportTtlMs),
   });
 
+  // GeckoTerminal gets its own, much longer-lived cache, for one specific
+  // reason: the background scan spends most of the free tier's ~30 req/min in
+  // a burst each cycle, which leaves roughly half of every minute returning
+  // 429 to anything else. Retrying inside a page load can't fix that — the
+  // outage lasts tens of seconds, far longer than anyone will wait.
+  //
+  // What does fix it is not needing the call. The fields this supplies —
+  // holder distribution, deployer holding, launchpad state, total supply —
+  // change on the order of a day (the API's own `last_updated` confirms it),
+  // so one success serves every report for this token for the next half hour,
+  // and only the first request after expiry can be unlucky.
+  const geckoCache = createTtlCache({
+    successTtlMs: config.tokenReport.geckoTtlMs,
+    // Short, so a 429 is retried on the next request rather than being
+    // remembered for half an hour.
+    failureTtlMs: 15_000,
+  });
+
   // Two requests for the same cold token would otherwise both do the full
   // fetch, including paying for two LLM calls.
   const inFlight = new Map();
@@ -59,8 +77,8 @@ export function createTokenReportService(config) {
     // Independent upstreams — one being down must not stop the others, so
     // each settles on its own and the builder handles the nulls.
     const [infoRes, marketRes, dexRes] = await Promise.allSettled([
-      getTokenInfo(network, address),
-      getTokenMarket(network, address),
+      geckoCache.getOrFetch(`info:${address}`, () => getTokenInfo(network, address)),
+      geckoCache.getOrFetch(`market:${address}`, () => getTokenMarket(network, address)),
       getDexScreenerToken(address, { chainId: config.chainId }),
     ]);
 
@@ -174,5 +192,5 @@ export function createTokenReportService(config) {
     return promise;
   }
 
-  return { getReport, cacheSize: () => cache.size() };
+  return { getReport, cacheSize: () => cache.size(), geckoCacheSize: () => geckoCache.size() };
 }

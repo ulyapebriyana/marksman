@@ -117,6 +117,7 @@ async function main() {
       llmConfigured: Boolean(config.anthropicApiKey),
       llmModel: config.anthropicApiKey ? config.llmModel : null,
       tokenReportCacheSize: tokenReports.cacheSize(),
+      geckoTokenCacheSize: tokenReports.geckoCacheSize(),
     });
   });
 

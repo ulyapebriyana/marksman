@@ -56,6 +56,11 @@ export async function loadConfig() {
       poolDetailLimit: 4,
       concurrency: 3,
       socialLimit: 40,
+      // Holder distribution and deployer holding change on the order of a
+      // day, so caching them well past the report's own TTL costs nothing in
+      // freshness and buys a lot of resilience against the rate limit the
+      // background scan keeps saturated.
+      geckoTtlMs: envInt("GECKO_TOKEN_TTL_SECONDS", 1800) * 1000,
     },
 
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
