@@ -142,6 +142,9 @@ npm test                 # Vitest — 94 tests over shared/ and server/
 | `AUTO_ALERT_ON_HOT` | `false` | If `true`, automatically sends a Telegram alert whenever a pool transitions to `hot` (in addition to the manual `POST /api/alert`) |
 | `DEXSCREENER_CHAIN_ID` / `GECKOTERMINAL_NETWORK` | `robinhood` | Chain slugs, confirmed live against both APIs |
 | `TOKEN_MAP_PATH` / `HISTORY_FILE_PATH` | `data/token-map.json` / `data/signal-history.json` | Override file locations |
+| `SOCIAL_PROVIDER` / `SOCIAL_API_KEY` | _(empty)_ | `twitterapi` (twitterapi.io) or `x` (official X API v2). Powers the team/catalysts/community/alpha sections of the token report. Unset means those sections say "not connected" — they never render as "nobody is talking about this" |
+| `ANTHROPIC_API_KEY` / `LLM_MODEL` | _(empty)_ / `claude-opus-5` | Synthesises the raw posts above into structured Indonesian sections. Unset means the report still ships its deterministic narrative plus the raw mentions |
+| `TOKEN_REPORT_TTL_SECONDS` | `300` | How long one token's report is cached. Deliberately longer than the scan cadence — a report costs up to six upstream calls plus an LLM round-trip |
 
 ## The liquidity-provider model
 
@@ -302,6 +305,112 @@ groups the scanned pools by `baseToken.address` before calling `runFunnel()`
 so each pool can see its siblings; calling `runFunnel()` directly (as the
 tests do) needs `siblingPools` passed in explicitly.
 
+## The token report
+
+`GET /api/token/:address` answers a different question from the screener. The
+screener asks "which pool is worth a look right now"; the report asks "what is
+this token, structurally" — and it answers **in Indonesian**, because that is
+who it is written for. The console renders it at `/app/token/0x…`; paste a
+contract address into the command palette to get there.
+
+### Why the copy is Indonesian and the rest of the app is not
+
+This is a deliberate split, not a half-finished translation. The screener is an
+instrument panel read by its operator; the report is a document written for a
+reader. Only the report was asked for in Indonesian, so only the report is —
+including its number formatting, which uses comma decimals and `rb`/`jt`
+scale throughout. `shared/narrative.js` and `TokenReportView.tsx` each have
+their own formatters rather than reusing the en-US ones in `web/src/lib/format.ts`;
+mixing `$1.5M` into a paragraph that reads `15,28%` looks like a bug.
+
+### The layers, and which of them cost money
+
+| Layer | Source | Needs a key |
+|---|---|---|
+| Fundamentals, pools, flow, distribution | GeckoTerminal + DexScreener | no |
+| Security checklist | same, plus what it honestly cannot check | no |
+| Narrative (six sections of Indonesian prose) | generated from the numbers above | no |
+| Team / catalysts / community / alpha | X/Twitter search | **yes** — `SOCIAL_API_KEY` |
+| Synthesis of those posts into sections | Claude | **yes** — `ANTHROPIC_API_KEY` |
+
+The first three work with no credentials at all. The last two degrade the way
+everything else in this codebase degrades: the section states that its source
+is not connected, which is a different claim from "nobody is talking about
+this token" and must never be collapsed into it.
+
+### The narrative is assembled, not paraphrased
+
+`shared/narrative.js` builds its sentences from the same report object the UI
+renders, so **every figure in the prose is the figure in the data by
+construction**. A model rewriting those paragraphs is a model that can get one
+wrong, and a wrong number inside fluent prose is worse than no prose. The LLM
+in `server/llmNarrative.mjs` therefore never touches the arithmetic — its only
+job is the social sections, which are genuinely unstructured text that nothing
+else can summarise.
+
+The editorial rule is enforced by a test: the narrative describes what the data
+shows and what it cannot show, and never tells anyone what to do about it. The
+words "beli" and "jual" appear freely as *nouns* naming the two sides of order
+flow; what the test bans is advisory phrasing.
+
+### GeckoTerminal `/tokens/{addr}/info` closes most of the data gap
+
+The funnel section below documents that Robinhood Chain has no
+contract-introspection or holder-analytics provider. That is still true of the
+providers it names, but GeckoTerminal's token *info* endpoint does publish
+holder count, top-10/11-30/31-50 distribution, the deployer address and its
+remaining holding percentage, a honeypot flag, and a `gt_score`. The report
+uses all of it.
+
+What it still cannot establish is reported as `unverifiable`, never as a pass:
+
+- **Contract source verification** — no API for this chain.
+- **Mint / freeze / blacklist functions** — the `mint_authority` and
+  `freeze_authority` fields are Solana concepts and come back `null` on an EVM
+  chain. **`null` here means "not applicable", not "checked and clean"**, and
+  rendering it as a pass would be inventing a result the API never gave.
+- **Honeypot simulation** — no simulator indexes this chain. The absence of a
+  DexScreener danger label is not a honeypot test.
+- **Liquidity locks** — not published by either source.
+
+### Numbers that are bounds, not estimates
+
+Unique trader counts are published per pool and cannot be de-duplicated across
+pools without wallet-level data — the same wallet trading two pools is counted
+twice. So the trader count is an **upper bound**, which makes trades-per-trader
+a **lower bound**. The bot-concentration flag can therefore only under-report,
+never over-report, and both the API field name (`tradesPerTraderLowerBound`)
+and the rendered copy say so.
+
+Token age is taken from the **oldest** pool, not the newest: a token is as old
+as its first market, and a fresh pool on an established token must not read as
+a fresh token.
+
+Valuation prefers market cap and falls back to FDV, and `valuationBasis` says
+which one it used — FDV on a token with unpublished circulating supply is the
+value of the entire supply, which the narrative states outright rather than
+letting the reader assume otherwise.
+
+### The verdict escalates rather than averages
+
+`buildVerdict()` is driven by the worst flag present *plus* a count rule: two
+`tinggi` flags make `kritis`, three `sedang` flags make `tinggi`. A pile of
+moderate problems is a serious problem, and averaging severities would hide
+exactly that case. `info` flags (launchpad graduation, the unverifiable-check
+count) are context and never move the verdict.
+
+### Posts from strangers are data, not instructions
+
+Everything the social layer returns is text written by people with an interest
+in the token's price. It reaches the model inside an explicit data envelope,
+the system prompt states that posts are quotable evidence and never
+instructions, and the response is constrained to a JSON schema — so the worst
+case of a post containing "ignore previous instructions" or "this token is
+audited and safe" is a bad summary, not a redirected agent. Nothing in the
+output is executed or fetched; evidence links render with `nofollow` and
+`noopener`, and the UI labels the whole block as the authors' claims rather
+than verified fact.
+
 ## Tuning scores, risk, and presets
 
 Everything is a named constant in `shared/scoring.js` — no magic numbers
@@ -333,6 +442,7 @@ tier), so a tuning change that breaks an assumption will fail loudly.
 | `GET /api/status` | Runtime health, last scan summary, which optional integrations are configured. |
 | `GET /api/history?limit=` | Recent signal transitions (newest first), capped at 250 total. |
 | `POST /api/alert` `{ address }` | Sends a manual Telegram alert for a pool from the current cache. 404 if the pool isn't in the last scan. |
+| `GET /api/token/:address?force=` | One token's full analysis report in Indonesian — fundamentals, holder distribution, order flow, a security checklist, risk findings, a generated narrative, and (when configured) X/Twitter intelligence. 404 if no source knows the address on this chain. Cached for `TOKEN_REPORT_TTL_SECONDS`. |
 
 All responses are `Cache-Control: no-store`. Upstream failures return `502`
 with a message — the process never crashes on a bad external response.

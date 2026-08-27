@@ -294,3 +294,214 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Token report — GET /api/token/:address                                      */
+/*                                                                             */
+/* A different question from the screener: not "which pool is worth a look     */
+/* right now" but "what is this token, structurally". Its copy is Indonesian   */
+/* because the report is written for an Indonesian reader — the strings below  */
+/* come from the server already translated, and the view renders them as-is.   */
+/* -------------------------------------------------------------------------- */
+
+/** Worst to least. `info` is context, not a warning, and never moves the verdict. */
+export type ReportSeverity = "kritis" | "tinggi" | "sedang" | "rendah" | "info";
+
+/** `unverifiable` is a real result: the check has no data source on this chain. */
+export type ReportCheckStatus = "pass" | "fail" | "warn" | "unverifiable";
+
+export interface ReportFlag {
+  code: string;
+  severity: ReportSeverity;
+  label: string;
+  detail: string;
+  count?: number;
+}
+
+export interface ReportCheck {
+  code: string;
+  status: ReportCheckStatus;
+  label: string;
+  detail: string;
+}
+
+export interface ReportIdentity {
+  address: string;
+  name: string | null;
+  symbol: string | null;
+  decimals: number | null;
+  imageUrl: string | null;
+  headerUrl: string | null;
+  description: string | null;
+  categories: string[];
+  websites: { url: string; label?: string }[];
+  twitterUrl: string | null;
+  telegramUrl: string | null;
+  discordUrl: string | null;
+  gtScore: number | null;
+  gtVerified: boolean;
+}
+
+export interface ReportMarket {
+  priceUsd: number | null;
+  fdvUsd: number | null;
+  marketCapUsd: number | null;
+  /** Market cap when published, else FDV. `valuationBasis` says which. */
+  valuationUsd: number | null;
+  valuationBasis: "market_cap" | "fdv" | null;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  totalSupply: number | null;
+  priceChange: { m5: number | null; h1: number | null; h6: number | null; h24: number | null };
+  /** Age of the OLDEST pool — a token is as old as its first market. */
+  ageHours: number | null;
+  poolCount: number;
+  topPoolSharePct: number | null;
+  liquidityToValuationPct: number | null;
+  turnoverRatio: number | null;
+}
+
+export interface ReportFlow {
+  buys24h: number | null;
+  sells24h: number | null;
+  trades24h: number | null;
+  /** Unique traders can't be de-duplicated across pools, so these over-count. */
+  buyersUpperBound: number | null;
+  sellersUpperBound: number | null;
+  tradersUpperBound: number | null;
+  buyRatioPct: number | null;
+  imbalancePct: number | null;
+  /** A floor, not an estimate — the trader count above is an upper bound. */
+  tradesPerTraderLowerBound: number | null;
+}
+
+export interface ReportDistribution {
+  holderCount: number | null;
+  top10Pct: number | null;
+  rank11to30Pct: number | null;
+  rank31to50Pct: number | null;
+  restPct: number | null;
+  top50Pct: number | null;
+  updatedAt: string | null;
+  developerAddress: string | null;
+  developerHoldingPct: number | null;
+}
+
+export interface ReportLaunchpad {
+  graduationPct: number | null;
+  completed: boolean;
+  completedAt: string | null;
+  destinationPool: string | null;
+}
+
+export interface ReportPool {
+  address: string;
+  dexId: string | null;
+  pairLabel: string | null;
+  labels: string[];
+  url?: string | null;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  priceUsd: number | null;
+  priceChange24hPct: number | null;
+  createdAt: string | number | null;
+  ageHours: number | null;
+  feePercentage?: number | null;
+  lockedLiquidityPct?: number | null;
+  buys24h: number | null;
+  sells24h: number | null;
+  buyers24h: number | null;
+  sellers24h: number | null;
+}
+
+export interface ReportVerdict {
+  level: "kritis" | "tinggi" | "sedang" | "rendah";
+  flagCount: number;
+  criticalCount: number;
+  highCount: number;
+  mediumCount: number;
+}
+
+export interface NarrativeSection {
+  key: string;
+  title: string;
+  body: string;
+}
+
+export interface ReportNarrative {
+  sections: NarrativeSection[];
+  plainText: string;
+  verdictLabel: string;
+  /** "deterministic" — assembled from the report object, not paraphrased. */
+  generatedBy: string;
+}
+
+export interface SocialMention {
+  id: string | null;
+  text: string;
+  author: string | null;
+  authorName: string | null;
+  authorFollowers: number | null;
+  createdAt: string | null;
+  likes: number | null;
+  retweets: number | null;
+  replies: number | null;
+  views: number | null;
+  url: string | null;
+}
+
+export interface SocialSynthesis {
+  ringkasanProyek?: string;
+  tim?: { ringkasan: string; anggota: { handle: string; peran: string; catatan: string; buktiUrl: string }[] };
+  katalis?: { ringkasan: string; item: { judul: string; detail: string; sumberHandle: string; buktiUrl: string }[] };
+  komunitas?: {
+    ringkasan: string;
+    sentimen: "positif" | "negatif" | "campuran" | "tidak cukup data";
+    jumlahPositif: number;
+    jumlahNegatif: number;
+    item: { sisi: "positif" | "negatif"; kutipan: string; handle: string; buktiUrl: string }[];
+  };
+  alpha?: { ringkasan: string; item: { temuan: string; sumberHandle: string; buktiUrl: string }[] };
+  generatedBy?: string;
+  mentionCount?: number;
+  error?: string;
+}
+
+export interface ReportSocial {
+  /** False when no X/Twitter provider is configured — an empty section is not "nobody is talking". */
+  configured: boolean;
+  provider?: string;
+  query?: string;
+  mentions?: SocialMention[];
+  stats?: {
+    mentionCount: number;
+    uniqueAuthors: number;
+    totalLikes: number;
+    topAuthorFollowers: number;
+  } | null;
+  error?: string;
+  /** Separate from `configured`: a social source with no LLM key yields raw mentions, no synthesis. */
+  synthesisConfigured: boolean;
+  synthesis: SocialSynthesis | null;
+}
+
+export interface TokenReport {
+  chain: string;
+  identity: ReportIdentity;
+  market: ReportMarket;
+  flow: ReportFlow;
+  distribution: ReportDistribution;
+  launchpad: ReportLaunchpad | null;
+  pools: ReportPool[];
+  checks: ReportCheck[];
+  flags: ReportFlag[];
+  verdict: ReportVerdict;
+  narrative: ReportNarrative;
+  social: ReportSocial;
+  meta: {
+    generatedAt: string;
+    sources: string[];
+    disclaimer: string;
+    cacheTtlSeconds?: number;
+  };
+}

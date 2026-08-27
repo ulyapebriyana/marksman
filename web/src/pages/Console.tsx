@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react
 import { Download, Droplets, Moon, RefreshCw, Star, Sun, Trash2 } from "lucide-react";
 import type { LpPresetKey, Pool, PresetKey } from "../api/types";
 import { useForceRescan, useHistory, usePools, useStatus } from "../hooks/usePools";
+import { useRefreshTokenReport, useTokenReport } from "../hooks/useTokenReport";
 import { useWatchlist } from "../hooks/useWatchlist";
 import { useHotkeys, useLeaderKey } from "../hooks/useHotkeys";
 import { useScanProgress } from "../hooks/useMisc";
@@ -9,7 +10,7 @@ import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../hooks/useToast";
 import { STORAGE_KEYS, readStored, writeStored } from "../lib/storage";
 import { DEFAULT_FILTERS, applyFilters, downloadCsv, poolsToCsv, type Filters } from "../lib/poolMath";
-import { NAV_ITEMS, viewFromPath, type ViewKey } from "../lib/nav";
+import { NAV_ITEMS, tokenAddressFromPath, viewFromPath, type ViewKey } from "../lib/nav";
 import { useRouter } from "../lib/router";
 
 import { MobileNav, Rail, TopBar } from "../components/shell/Shell";
@@ -23,6 +24,7 @@ import { SpreadsView } from "../components/views/SpreadsView";
 import { LiquidityView } from "../components/views/LiquidityView";
 import { SignalsView } from "../components/views/SignalsView";
 import { SystemView } from "../components/views/SystemView";
+import { TokenReportView } from "../components/views/TokenReportView";
 
 // Analytics is the only view that pulls in Recharts — roughly half the bundle.
 // Splitting it keeps the first paint of every other view lean.
@@ -55,6 +57,12 @@ export default function Console() {
   const [railCollapsed, setRailCollapsed] = useState(() =>
     readStored<boolean>(STORAGE_KEYS.railCollapsed, false, (v): v is boolean => typeof v === "boolean")
   );
+
+  // A token report is a detail route layered over the console shell rather
+  // than a nav view — the rail keeps whatever view the user came from.
+  const tokenAddress = tokenAddressFromPath(path);
+  const tokenQuery = useTokenReport(tokenAddress);
+  const refreshToken = useRefreshTokenReport(tokenAddress);
 
   const poolsQuery = usePools(preset, lpPreset);
   const historyQuery = useHistory();
@@ -191,10 +199,32 @@ export default function Console() {
 
   /* --- render ------------------------------------------------------------ */
 
-  const title = NAV_ITEMS.find((item) => item.key === view)?.label ?? "Overview";
+  const title = tokenAddress
+    ? (tokenQuery.data?.identity.symbol ? `$${tokenQuery.data.identity.symbol}` : "Laporan Token")
+    : (NAV_ITEMS.find((item) => item.key === view)?.label ?? "Overview");
   const showLoading = poolsQuery.isLoading && pools.length === 0;
 
   function renderView() {
+    if (tokenAddress) {
+      return (
+        <TokenReportView
+          address={tokenAddress}
+          report={tokenQuery.data}
+          isLoading={tokenQuery.isLoading}
+          error={tokenQuery.error instanceof Error ? tokenQuery.error : null}
+          onRefresh={() =>
+            refreshToken.mutate(undefined, {
+              onSuccess: () => showToast("Laporan token disegarkan.", "success"),
+              onError: (err) =>
+                showToast(err instanceof Error ? err.message : "Gagal menyegarkan laporan.", "error"),
+            })
+          }
+          isRefreshing={refreshToken.isPending}
+          onRetry={() => tokenQuery.refetch()}
+        />
+      );
+    }
+
     if (poolsQuery.isError && pools.length === 0 && view !== "system") {
       return (
         <ErrorState
@@ -306,7 +336,7 @@ export default function Console() {
           <div className="mx-auto max-w-[1400px] space-y-4">
             <DegradedSourceBanner sourceHealth={meta?.sourceHealth} />
             {renderView()}
-            {view !== "system" && <DisclaimerBanner />}
+            {view !== "system" && !tokenAddress && <DisclaimerBanner />}
           </div>
         </main>
       </div>

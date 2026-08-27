@@ -12,6 +12,7 @@ import { PRESETS } from "../shared/scoring.js";
 import { LP_PRESETS, evaluateLpPreset } from "../shared/lpScoring.js";
 import { createSignalTracker, annotatePoolWithPreset } from "../shared/signalTransitions.js";
 import { UpstreamError } from "../shared/dataSources/httpClient.mjs";
+import { createTokenReportService, TokenNotFoundError } from "./tokenReports.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +23,7 @@ async function main() {
   const signalTracker = createSignalTracker({ cooldownMs: config.cooldownMs });
   const pipeline = createPipeline(config, { signalTracker, historyStore });
   const scanCache = createScanCache({ ttlMs: config.scanIntervalMs });
+  const tokenReports = createTokenReportService(config);
 
   const app = express();
   app.disable("x-powered-by");
@@ -76,6 +78,23 @@ async function main() {
     }
   });
 
+  // One token's full analysis report: on-chain fundamentals, holder
+  // distribution, order flow, a security checklist that reports what it
+  // genuinely cannot verify, an Indonesian narrative, and — when a social
+  // provider is configured — the team/catalyst/community/alpha synthesis.
+  app.get("/api/token/:address", async (req, res) => {
+    try {
+      const report = await tokenReports.getReport(req.params.address, { force: req.query.force === "1" });
+      res.set("Cache-Control", "no-store");
+      res.json(report);
+    } catch (err) {
+      if (err instanceof TokenNotFoundError) {
+        return res.status(404).json({ error: err.message });
+      }
+      respondUpstreamError(res, err, "Gagal menyusun laporan token");
+    }
+  });
+
   app.get("/api/status", async (req, res) => {
     const cached = scanCache.peek();
     res.set("Cache-Control", "no-store");
@@ -93,6 +112,11 @@ async function main() {
       stockApiConfigured: Boolean(config.stockApiKey),
       telegramConfigured: Boolean(config.telegramBotToken && config.telegramChatId),
       tokenMapSize: Object.keys(config.tokenMap).length,
+      socialConfigured: Boolean(config.socialProvider && config.socialApiKey),
+      socialProvider: config.socialProvider || null,
+      llmConfigured: Boolean(config.anthropicApiKey),
+      llmModel: config.anthropicApiKey ? config.llmModel : null,
+      tokenReportCacheSize: tokenReports.cacheSize(),
     });
   });
 

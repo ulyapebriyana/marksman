@@ -85,3 +85,18 @@ export function viewFromPath(path: string): ViewKey {
   // Unknown /app/* paths fall back to the overview rather than a dead screen.
   return "overview";
 }
+
+/**
+ * `/app/token/0x…` is a detail route, not a nav destination — it has no rail
+ * entry and no hotkey, so it lives outside NAV_ITEMS and is matched here.
+ * Returns null for anything that isn't a well-formed EVM address, which keeps
+ * a malformed deep link on the overview instead of firing a doomed request.
+ */
+export function tokenAddressFromPath(path: string): string | null {
+  const match = path.match(/^\/app\/token\/(0x[a-fA-F0-9]{40})\/?$/);
+  return match ? match[1].toLowerCase() : null;
+}
+
+export function tokenReportPath(address: string): string {
+  return `/app/token/${address.toLowerCase()}`;
+}

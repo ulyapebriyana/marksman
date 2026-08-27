@@ -41,6 +41,23 @@ export async function loadConfig() {
     stockApiProvider: process.env.STOCK_API_PROVIDER ?? "finnhub",
     stockApiKey: process.env.STOCK_API_KEY ?? "",
 
+    // --- Token report (GET /api/token/:address) ---
+    // The social layer is the only part of the report that needs a paid key.
+    // Everything else works without one, so an unset provider degrades that
+    // one section rather than the endpoint.
+    socialProvider: process.env.SOCIAL_PROVIDER ?? "",
+    socialApiKey: process.env.SOCIAL_API_KEY ?? "",
+    // Synthesising team/catalysts/community/alpha out of raw posts is the
+    // only job the model has here; it never touches the on-chain numbers.
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    llmModel: process.env.LLM_MODEL ?? "claude-opus-5",
+    tokenReportTtlMs: envInt("TOKEN_REPORT_TTL_SECONDS", 300) * 1000,
+    tokenReport: {
+      poolDetailLimit: 4,
+      concurrency: 3,
+      socialLimit: 40,
+    },
+
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
     telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
     autoAlertOnHot: process.env.AUTO_ALERT_ON_HOT === "true",

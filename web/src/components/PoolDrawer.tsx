@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { Bell, Check, Copy, ExternalLink, Star, X } from "lucide-react";
+import { Bell, Check, Copy, ExternalLink, FileSearch, Star, X } from "lucide-react";
 import type { Pool, PresetKey } from "../api/types";
 import {
   formatAge,
@@ -19,6 +19,8 @@ import { useSendAlert } from "../hooks/usePools";
 import { useToast } from "../hooks/useToast";
 import { useFocusTrap, useScrollLock } from "../hooks/useMisc";
 import { PoolLinks } from "./ui/PoolLinks";
+import { tokenReportPath } from "../lib/nav";
+import { useRouter } from "../lib/router";
 
 const SCORE_LABELS: Record<string, string> = {
   momentum: "Momentum",
@@ -96,6 +98,7 @@ export function PoolDrawer({
 }) {
   const [tab, setTab] = useState<Tab>("overview");
   const { showToast } = useToast();
+  const { navigate } = useRouter();
   const sendAlert = useSendAlert();
   const containerRef = useFocusTrap(pool != null);
 
@@ -172,6 +175,17 @@ export function PoolDrawer({
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
+              <IconButton
+                label={`Token report for ${pool.baseToken.symbol ?? "this token"}`}
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  navigate(tokenReportPath(pool.baseToken.address));
+                }}
+              >
+                <FileSearch size={16} aria-hidden />
+              </IconButton>
               <IconButton
                 label={isWatched ? "Remove from watchlist" : "Add to watchlist"}
                 variant="ghost"

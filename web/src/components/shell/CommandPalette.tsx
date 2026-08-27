@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { CornerDownLeft, Search } from "lucide-react";
+import { CornerDownLeft, FileSearch, Search } from "lucide-react";
 import type { Pool } from "../../api/types";
-import { NAV_ITEMS } from "../../lib/nav";
+import { NAV_ITEMS, tokenReportPath } from "../../lib/nav";
 import { matchesSearch, poolLabel } from "../../lib/poolMath";
 import { formatUsd } from "../../lib/format";
 import { useFocusTrap, useScrollLock } from "../../hooks/useMisc";
@@ -62,9 +62,29 @@ export function CommandPalette({
       run: () => onNavigate(item.path),
     }));
 
-    const matchedCommands = [...navItems, ...commands].filter(
-      (command) => !term || command.label.toLowerCase().includes(term) || command.group.toLowerCase().includes(term)
-    );
+    // Pasting a contract address is the fastest way into a token report, and
+    // it matches no command label — so it gets its own item rather than
+    // returning "no results" for a perfectly valid query.
+    const addressMatch = query.trim().match(/^(0x[a-fA-F0-9]{40})$/);
+    const addressItems: Command[] = addressMatch
+      ? [
+          {
+            id: `token-${addressMatch[1]}`,
+            label: `Buka laporan token ${addressMatch[1].slice(0, 10)}…`,
+            hint: "Analisis lengkap dalam Bahasa Indonesia",
+            group: "Go to",
+            icon: <FileSearch size={15} aria-hidden />,
+            run: () => onNavigate(tokenReportPath(addressMatch[1])),
+          },
+        ]
+      : [];
+
+    const matchedCommands = [
+      ...addressItems,
+      ...[...navItems, ...commands].filter(
+        (command) => !term || command.label.toLowerCase().includes(term) || command.group.toLowerCase().includes(term)
+      ),
+    ];
 
     const matchedPools = (term ? pools.filter((pool) => matchesSearch(pool, term)) : pools.slice(0, 6)).slice(0, 8);
 

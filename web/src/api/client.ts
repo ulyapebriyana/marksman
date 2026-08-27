@@ -5,6 +5,7 @@ import type {
   PoolsResponse,
   PresetKey,
   StatusResponse,
+  TokenReport,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -50,4 +51,9 @@ export async function postAlert(address: string, preset?: PresetKey): Promise<Al
     throw new ApiError(body?.error ?? `Request failed: ${res.status}`, res.status);
   }
   return body;
+}
+
+/** One token's full analysis report. `force` bypasses the server-side cache. */
+export function fetchTokenReport(address: string, opts: { force?: boolean } = {}): Promise<TokenReport> {
+  return get<TokenReport>(`/api/token/${address}${opts.force ? "?force=1" : ""}`);
 }
