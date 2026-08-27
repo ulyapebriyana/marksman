@@ -438,8 +438,16 @@ function FlowPanel({ report }: { report: TokenReport }) {
           </div>
         </dl>
         <p className="mt-3 text-[11px] leading-snug text-txt-2">
-          Jumlah dompet unik tidak bisa digabung antar-pool tanpa data level wallet, jadi angka per dompet di atas
-          adalah batas bawah — pedagang sesungguhnya lebih sedikit, bukan lebih banyak.
+          {f.tradesPerTraderLowerBound != null ? (
+            <>
+              Angka per dompet dihitung hanya dari pool yang melaporkan dompet unik, mencakup{" "}
+              <span className="num">{pct(f.traderCoveragePct)}</span> transaksi 24 jam. Itu batas bawah: dompet yang
+              sama berdagang di dua pool terhitung dua kali, jadi pedagang sesungguhnya lebih sedikit, bukan lebih
+              banyak.
+            </>
+          ) : (
+            "Tidak ada pool yang melaporkan jumlah dompet unik, jadi rata-rata transaksi per dompet tidak bisa dihitung."
+          )}
         </p>
       </div>
     </Panel>

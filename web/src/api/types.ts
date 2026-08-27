@@ -371,7 +371,12 @@ export interface ReportFlow {
   tradersUpperBound: number | null;
   buyRatioPct: number | null;
   imbalancePct: number | null;
-  /** A floor, not an estimate — the trader count above is an upper bound. */
+  /** Share of 24h trades in pools that reported unique traders. */
+  traderCoveragePct: number | null;
+  /**
+   * A floor, not an estimate. Derived only from the covered pools above, so
+   * it is not distorted by which per-pool calls happened to land.
+   */
   tradesPerTraderLowerBound: number | null;
 }
 

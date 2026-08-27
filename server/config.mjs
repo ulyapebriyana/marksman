@@ -61,6 +61,10 @@ export async function loadConfig() {
       // freshness and buys a lot of resilience against the rate limit the
       // background scan keeps saturated.
       geckoTtlMs: envInt("GECKO_TOKEN_TTL_SECONDS", 1800) * 1000,
+      // Flow does move minute to minute, so this is much shorter — long
+      // enough to stop the contributing-pool set flickering between
+      // refreshes, short enough that the numbers stay current.
+      poolDetailTtlMs: envInt("POOL_DETAIL_TTL_SECONDS", 120) * 1000,
     },
 
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",

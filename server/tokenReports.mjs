@@ -67,6 +67,11 @@ export function createTokenReportService(config) {
     failureTtlMs: 15_000,
   });
 
+  const poolDetailCache = createTtlCache({
+    successTtlMs: config.tokenReport.poolDetailTtlMs,
+    failureTtlMs: 15_000,
+  });
+
   // Two requests for the same cold token would otherwise both do the full
   // fetch, including paying for two LLM calls.
   const inFlight = new Map();
@@ -118,10 +123,15 @@ export function createTokenReportService(config) {
             .filter(Boolean)
     ).slice(0, config.tokenReport.poolDetailLimit);
 
+    // Cached too, on a shorter TTL than the token metadata above: flow does
+    // move minute to minute, but an uncached call fails often enough that the
+    // set of pools contributing unique-trader counts changed between refreshes
+    // and swung the derived figure several-fold.
     const poolDetails = (
       await mapWithConcurrency(
         poolAddresses,
-        (addr) => getPoolDetail(network, addr).catch(() => null),
+        (addr) =>
+          poolDetailCache.getOrFetch(`${network}:${addr}`, () => getPoolDetail(network, addr)).catch(() => null),
         config.tokenReport.concurrency
       )
     ).filter(Boolean);

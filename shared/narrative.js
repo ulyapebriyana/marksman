@@ -200,12 +200,12 @@ function aliran(report) {
   // twice), so the per-trader figure is a floor. Say so rather than
   // presenting it as exact.
   const dompet = f.tradesPerTraderLowerBound != null
-    ? ` Dari jumlah dompet unik yang dilaporkan per pool, rata-ratanya minimal ${f.tradesPerTraderLowerBound.toLocaleString(RUPIAH_LOCALE, { maximumFractionDigits: 1 })} transaksi per dompet${
+    ? ` Pada pool yang melaporkan jumlah dompet unik — mencakup ${formatPct(f.traderCoveragePct)} dari seluruh transaksi 24 jam — rata-ratanya minimal ${f.tradesPerTraderLowerBound.toLocaleString(RUPIAH_LOCALE, { maximumFractionDigits: 1 })} transaksi per dompet${
         f.tradesPerTraderLowerBound >= 20
           ? " — pola yang lebih mirip bot atau perdagangan berulang daripada peserta yang banyak dan berbeda-beda"
           : ""
       }. Angka ini batas bawah: dompet yang sama berdagang di dua pool terhitung dua kali, jadi jumlah pedagang sesungguhnya lebih sedikit, bukan lebih banyak.`
-    : "";
+    : " Tidak ada pool yang melaporkan jumlah dompet unik, jadi rata-rata transaksi per dompet tidak bisa dihitung.";
 
   return sentence([dasar + timpang + dompet]);
 }

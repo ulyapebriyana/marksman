@@ -133,6 +133,32 @@ describe("buildTokenReport — flow", () => {
     expect(r.flow.tradesPerTraderLowerBound).toBe(10);
   });
 
+  // Regression: unique-trader counts come from a per-pool call that only some
+  // pools get, so dividing TOTAL trades by a SUBSET's traders produced a
+  // ratio that swung several-fold between refreshes.
+  it("derives trades-per-trader only from the pools that reported traders", () => {
+    const r = build(
+      makeRaw({
+        pairs: [
+          pair({ address: "0xa", txns: { h24: { buys: 100, sells: 100 } } }),
+          pair({ address: "0xb", txns: { h24: { buys: 900, sells: 900 } } }),
+        ],
+        // Only pool A came back with unique counts.
+        poolDetails: [{ address: "0xa", txns: { h24: { buys: 100, sells: 100, buyers: 10, sellers: 10 } } }],
+      })
+    );
+    expect(r.flow.trades24h).toBe(2000);
+    // 200 covered trades / 20 covered traders — not 2000 / 20.
+    expect(r.flow.tradesPerTraderLowerBound).toBe(10);
+    expect(r.flow.traderCoveragePct).toBeCloseTo(10, 5);
+  });
+
+  it("reports no per-trader figure when no pool reported unique traders", () => {
+    const r = build(makeRaw({ pairs: [pair()], poolDetails: [] }));
+    expect(r.flow.tradesPerTraderLowerBound).toBeNull();
+    expect(r.flow.traderCoveragePct).toBe(0);
+  });
+
   it("reports imbalance as a share of total trades", () => {
     const r = build(makeRaw({ pairs: [pair({ txns: { h24: { buys: 700, sells: 300 } } })] }));
     expect(r.flow.imbalancePct).toBeCloseTo(40, 5);

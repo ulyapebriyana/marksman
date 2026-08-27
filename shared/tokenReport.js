@@ -235,6 +235,16 @@ function buildFlow(pools) {
   // flag can only under-report, never over-report.
   const traders = buyers != null && sellers != null ? buyers + sellers : null;
 
+  // Unique-trader counts come from a per-pool detail call that only some
+  // pools get (it is rate-limited and budgeted). Dividing total trades by the
+  // traders of a SUBSET produces a ratio with no meaning — and one that
+  // swings several-fold between refreshes as the covered set changes. So
+  // measure how much of the day's volume the covered pools actually account
+  // for, and derive the ratio only from those pools.
+  const covered = pools.filter((p) => p.buyers24h != null || p.sellers24h != null);
+  const coveredTrades = covered.reduce((total, p) => total + (p.buys24h ?? 0) + (p.sells24h ?? 0), 0);
+  const coveragePct = pct(coveredTrades, trades);
+
   return {
     buys24h: buys,
     sells24h: sells,
@@ -244,7 +254,11 @@ function buildFlow(pools) {
     tradersUpperBound: traders,
     buyRatioPct: pct(buys, trades),
     imbalancePct: trades ? pct(Math.abs(buys - sells), trades) : null,
-    tradesPerTraderLowerBound: ratio(trades, traders),
+    /** Share of 24h trades happening in pools that reported unique traders. */
+    traderCoveragePct: coveragePct,
+    // Both sides of this ratio now come from the same pools, so it is a real
+    // (if conservative) figure rather than an artefact of which calls landed.
+    tradesPerTraderLowerBound: coveredTrades > 0 ? ratio(coveredTrades, traders) : null,
   };
 }
 
