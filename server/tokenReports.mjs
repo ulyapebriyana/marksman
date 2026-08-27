@@ -17,6 +17,14 @@ import { synthesizeSocialSections } from "./llmNarrative.mjs";
 
 const EVM_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 
+/** Human-readable failure reason from a rejected Promise.allSettled entry. */
+function reasonOf(settled) {
+  if (settled.status !== "rejected") return null;
+  const err = settled.reason;
+  if (err?.status === 429) return "rate_limited";
+  return err?.message ? String(err.message).slice(0, 120) : "unknown";
+}
+
 export class TokenNotFoundError extends Error {
   constructor(address) {
     super(`Token ${address} tidak ditemukan di chain ini.`);
@@ -60,6 +68,20 @@ export function createTokenReportService(config) {
     const market = marketRes.status === "fulfilled" ? marketRes.value : null;
     const dexToken = dexRes.status === "fulfilled" ? dexRes.value : null;
 
+    // Which sources actually answered. This is NOT cosmetic: without it the
+    // report cannot tell "this token publishes no holder data" apart from
+    // "GeckoTerminal rate-limited us just now", and it would report the
+    // second as the first — exactly the kind of confident-but-wrong gap this
+    // codebase refuses to ship.
+    const sourceHealth = {
+      geckoterminal:
+        infoRes.status === "fulfilled" || marketRes.status === "fulfilled"
+          ? { ok: true, reason: null }
+          : { ok: false, reason: reasonOf(infoRes) ?? reasonOf(marketRes) },
+      dexscreener:
+        dexRes.status === "fulfilled" ? { ok: true, reason: null } : { ok: false, reason: reasonOf(dexRes) },
+    };
+
     // Nothing anywhere knows this address: a real 404, not a degraded report.
     if (!info && !market && !dexToken?.pairs?.length) {
       throw new TokenNotFoundError(address);
@@ -100,7 +122,7 @@ export function createTokenReportService(config) {
     });
 
     const report = buildTokenReport(
-      { info, market, dexToken, poolDetails, address, social },
+      { info, market, dexToken, poolDetails, address, social, sourceHealth },
       { chain: config.chainId }
     );
 

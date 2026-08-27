@@ -152,6 +152,17 @@ describe("buildNarrative", () => {
     expect(n.sections[2].body).toContain("bukan kabar baik");
   });
 
+  // A rate limit is a fetch problem the reader can fix by refreshing. Reporting
+  // it as "this token publishes no holder data" is a confident wrong answer.
+  it("distinguishes a rate-limited source from a token that publishes nothing", () => {
+    const base = report({ info: { holders: null, developerHoldingPct: null } });
+    const limited = { ...base, sourceHealth: { geckoterminal: { ok: false, reason: "rate_limited" } } };
+    const body = buildNarrative(limited).sections[2].body;
+    expect(body).toContain("membatasi permintaan");
+    expect(body).toContain("bukan kesimpulan tentang tokennya");
+    expect(body).not.toContain("bukan kabar baik");
+  });
+
   it("names the unverifiable checks in the limits section", () => {
     const n = buildNarrative(report());
     expect(n.sections[5].body).toContain("tidak terverifikasi");

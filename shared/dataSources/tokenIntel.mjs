@@ -22,6 +22,29 @@ const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
 const DEXSCREENER_BASE = "https://api.dexscreener.com/latest/dex";
 const DEFAULT_TIMEOUT_MS = 8000;
 
+/**
+ * GeckoTerminal's free tier allows ~30 requests/minute, and this project's
+ * background scan already consumes most of that every cycle (see
+ * `bulkScan`/`enrich` in server/config.mjs). An on-demand token report
+ * therefore lands on a 429 fairly often — but unlike the scan it is a single
+ * user waiting on a single page, so a short wait is much better than silently
+ * dropping the holder data.
+ *
+ * Only 429 is retried. A 404 is a real answer and a 5xx won't be fixed by
+ * asking again 1.2 seconds later.
+ */
+async function withRateLimitRetry(fn, { retries = 2, delayMs = 1200 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isRateLimit = err instanceof UpstreamError && err.status === 429;
+      if (!isRateLimit || attempt >= retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+}
+
 function num(value) {
   if (value == null || value === "") return null;
   const n = Number(value);
@@ -42,7 +65,7 @@ export async function getTokenInfo(network, address, opts = {}) {
 
   let data;
   try {
-    data = await fetchJson(url, { timeoutMs });
+    data = await withRateLimitRetry(() => fetchJson(url, { timeoutMs }));
   } catch (err) {
     // A 404 here means "no such token on this chain" — a real answer the
     // caller renders as an empty state, not an upstream outage.
@@ -112,7 +135,7 @@ export async function getTokenMarket(network, address, opts = {}) {
 
   let data;
   try {
-    data = await fetchJson(url, { timeoutMs });
+    data = await withRateLimitRetry(() => fetchJson(url, { timeoutMs }));
   } catch (err) {
     if (err instanceof UpstreamError && err.status === 404) return null;
     throw err;
@@ -152,7 +175,7 @@ export async function getPoolDetail(network, poolAddress, opts = {}) {
 
   let data;
   try {
-    data = await fetchJson(url, { timeoutMs });
+    data = await withRateLimitRetry(() => fetchJson(url, { timeoutMs }));
   } catch (err) {
     if (err instanceof UpstreamError && err.status === 404) return null;
     throw err;

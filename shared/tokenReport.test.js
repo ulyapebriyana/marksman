@@ -253,6 +253,41 @@ describe("buildTokenReport — security checks never fabricate a pass", () => {
   });
 });
 
+describe("buildTokenReport — an unavailable source is not an absent fact", () => {
+  const down = (reason) => ({ geckoterminal: { ok: false, reason }, dexscreener: { ok: true, reason: null } });
+
+  it("blames the rate limit rather than the token when GeckoTerminal 429s", () => {
+    const raw = { ...makeRaw({ info: { holders: null }, pairs: [pair()] }), sourceHealth: down("rate_limited") };
+    const r = build(raw);
+    const check = r.checks.find((c) => c.code === "holder_concentration");
+    expect(check.status).toBe("unverifiable");
+    expect(check.detail).toContain("membatasi permintaan");
+    expect(check.detail).not.toContain("tidak dipublikasikan");
+  });
+
+  it("says the data is unpublished when the source answered but had nothing", () => {
+    const raw = {
+      ...makeRaw({ info: { holders: null }, pairs: [pair()] }),
+      sourceHealth: { geckoterminal: { ok: true, reason: null }, dexscreener: { ok: true, reason: null } },
+    };
+    const r = build(raw);
+    expect(r.checks.find((c) => c.code === "holder_concentration").detail).toContain("tidak dipublikasikan");
+  });
+
+  it("applies the same distinction to developer holding", () => {
+    const raw = {
+      ...makeRaw({ info: { holders: null, developerHoldingPct: null }, pairs: [pair()] }),
+      sourceHealth: down("rate_limited"),
+    };
+    expect(build(raw).checks.find((c) => c.code === "developer_holding").detail).toContain("membatasi permintaan");
+  });
+
+  it("exposes sourceHealth on the report", () => {
+    const raw = { ...makeRaw({ pairs: [pair()] }), sourceHealth: down("rate_limited") };
+    expect(build(raw).sourceHealth.geckoterminal.ok).toBe(false);
+  });
+});
+
 describe("buildTokenReport — social", () => {
   it("defaults to an explicitly unconfigured social block", () => {
     const r = build(makeRaw({ pairs: [pair()] }));

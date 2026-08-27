@@ -274,8 +274,18 @@ function buildDistribution(info) {
  * several standard checks genuinely cannot run, and saying so is the honest
  * output.
  */
-function buildChecks(info, pools, tun) {
+function buildChecks(info, pools, tun, sourceHealth) {
   const checks = [];
+  // A missing value means two very different things depending on whether the
+  // source answered at all. Saying "this token publishes none" when we were
+  // simply rate-limited would be a confident wrong answer.
+  const geckoDown = sourceHealth?.geckoterminal?.ok === false;
+  const missingReason = geckoDown
+    ? sourceHealth.geckoterminal.reason === "rate_limited"
+      ? "Sumber data (GeckoTerminal) sedang membatasi permintaan, jadi angka ini belum terambil — bukan berarti tidak ada. Coba segarkan sebentar lagi."
+      : "Sumber data (GeckoTerminal) sedang tidak bisa dihubungi, jadi angka ini belum terambil. Coba segarkan sebentar lagi."
+    : null;
+
   const dangerLabels = pools.flatMap((p) =>
     (p.labels ?? []).filter((l) => /honeypot|danger|scam|rug/i.test(String(l)))
   );
@@ -330,7 +340,7 @@ function buildChecks(info, pools, tun) {
           code: "holder_concentration",
           status: "unverifiable",
           label: "Konsentrasi holder",
-          detail: "Data distribusi holder belum tersedia untuk token ini.",
+          detail: missingReason ?? "Data distribusi holder tidak dipublikasikan untuk token ini.",
         }
       : {
           code: "holder_concentration",
@@ -348,7 +358,7 @@ function buildChecks(info, pools, tun) {
           code: "developer_holding",
           status: "unverifiable",
           label: "Kepemilikan developer",
-          detail: "Alamat deployer tidak terpublikasi untuk token ini.",
+          detail: missingReason ?? "Alamat deployer tidak dipublikasikan untuk token ini.",
         }
       : {
           code: "developer_holding",
@@ -548,7 +558,7 @@ function buildVerdict(flags) {
  */
 export function buildTokenReport(raw, opts = {}) {
   const { now = Date.now(), tunables = REPORT_TUNABLES, chain = "robinhood" } = opts;
-  const { info, market: marketRaw, dexToken, poolDetails = [], social = null } = raw;
+  const { info, market: marketRaw, dexToken, poolDetails = [], social = null, sourceHealth = null } = raw;
 
   const identity = buildIdentity(info, dexToken, raw.address);
   const pools = buildPools(dexToken, poolDetails, now);
@@ -556,7 +566,7 @@ export function buildTokenReport(raw, opts = {}) {
   const flow = buildFlow(pools);
   const distribution = buildDistribution(info);
   const launchpad = info?.launchpad ?? null;
-  const checks = buildChecks(info, pools, tunables);
+  const checks = buildChecks(info, pools, tunables, sourceHealth);
   const flags = buildRiskFlags({ market, flow, distribution, launchpad, checks }, tunables);
   const verdict = buildVerdict(flags);
 
@@ -575,6 +585,7 @@ export function buildTokenReport(raw, opts = {}) {
     checks,
     flags,
     verdict,
+    sourceHealth,
     social: social ?? { configured: false, sections: null },
     meta: {
       generatedAt: new Date(now).toISOString(),

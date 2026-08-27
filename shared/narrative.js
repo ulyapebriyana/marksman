@@ -145,7 +145,16 @@ function distribusi(report) {
   const d = report.distribution;
 
   if (d.holderCount == null && d.developerHoldingPct == null) {
-    return "Data distribusi holder tidak tersedia untuk token ini, jadi konsentrasi kepemilikan tidak bisa dinilai — dan itu sendiri sebuah kekosongan, bukan kabar baik.";
+    // "The source didn't answer" and "the token publishes nothing" are
+    // different facts and the reader needs to know which one this is —
+    // the first is fixed by refreshing, the second is not.
+    const down = report.sourceHealth?.geckoterminal?.ok === false;
+    if (down) {
+      return report.sourceHealth.geckoterminal.reason === "rate_limited"
+        ? "Data distribusi holder belum bisa diambil karena sumbernya (GeckoTerminal) sedang membatasi permintaan. Ini masalah sementara pada pengambilan data, bukan kesimpulan tentang tokennya — segarkan sebentar lagi untuk melihat angkanya."
+        : "Data distribusi holder belum bisa diambil karena sumbernya (GeckoTerminal) sedang tidak bisa dihubungi. Ini masalah sementara pada pengambilan data, bukan kesimpulan tentang tokennya.";
+    }
+    return "Data distribusi holder tidak dipublikasikan untuk token ini, jadi konsentrasi kepemilikan tidak bisa dinilai — dan itu sendiri sebuah kekosongan, bukan kabar baik.";
   }
 
   const jumlah = d.holderCount != null ? `Token ini dipegang ${formatCount(d.holderCount)} alamat.` : "";

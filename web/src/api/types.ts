@@ -485,6 +485,11 @@ export interface ReportSocial {
   synthesis: SocialSynthesis | null;
 }
 
+export interface ReportSourceHealth {
+  geckoterminal: { ok: boolean; reason: string | null };
+  dexscreener: { ok: boolean; reason: string | null };
+}
+
 export interface TokenReport {
   chain: string;
   identity: ReportIdentity;
@@ -496,6 +501,8 @@ export interface TokenReport {
   checks: ReportCheck[];
   flags: ReportFlag[];
   verdict: ReportVerdict;
+  /** Which upstreams answered. Null on reports built without it. */
+  sourceHealth: ReportSourceHealth | null;
   narrative: ReportNarrative;
   social: ReportSocial;
   meta: {

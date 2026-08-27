@@ -211,6 +211,30 @@ function StatRow({ report }: { report: TokenReport }) {
   );
 }
 
+/**
+ * A degraded source has to be visible, because several sections go quiet when
+ * GeckoTerminal is unavailable and a silent gap reads as "this token has no
+ * holders data" rather than "we could not fetch it just now".
+ */
+function SourceBanner({ report }: { report: TokenReport }) {
+  const gecko = report.sourceHealth?.geckoterminal;
+  if (!gecko || gecko.ok) return null;
+
+  return (
+    <div className="flex items-start gap-2.5 rounded-xl border border-reticle/30 bg-reticle/8 px-4 py-3">
+      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-reticle" aria-hidden />
+      <p className="text-[12px] leading-relaxed text-txt-1">
+        {gecko.reason === "rate_limited"
+          ? "GeckoTerminal sedang membatasi permintaan, jadi distribusi holder dan kepemilikan developer belum terambil di laporan ini."
+          : "GeckoTerminal sedang tidak bisa dihubungi, jadi distribusi holder dan kepemilikan developer belum terambil di laporan ini."}{" "}
+        <span className="text-txt-2">
+          Ini kendala pengambilan data, bukan temuan tentang tokennya — tekan Segarkan sebentar lagi.
+        </span>
+      </p>
+    </div>
+  );
+}
+
 function VerdictBanner({ report }: { report: TokenReport }) {
   const s = SEVERITY[report.verdict.level];
   const { criticalCount, highCount, mediumCount } = report.verdict;
@@ -705,6 +729,7 @@ export function TokenReportView({
 
       <Header report={report} />
       <StatRow report={report} />
+      <SourceBanner report={report} />
       <VerdictBanner report={report} />
       <NarrativeSections report={report} />
       <Findings report={report} />
