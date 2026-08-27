@@ -83,6 +83,13 @@ export interface TokenInfo {
   name: string | null;
 }
 
+export interface PoolLinks {
+  /** Official project site reported by DexScreener. */
+  website: string | null;
+  /** X/Twitter profile or X Community, with a real Community preferred. */
+  community: string | null;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Funnel — the practitioner security-first gate                              */
 /* -------------------------------------------------------------------------- */
@@ -202,6 +209,7 @@ export interface Pool {
   pairCreatedAt: number | null;
   ageMs: number | null;
   labels: string[];
+  links: PoolLinks;
   isKnownToken: boolean;
   isTokenizedStock: boolean;
   stockTicker: string | null;

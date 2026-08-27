@@ -18,6 +18,7 @@ import { Button, Eyebrow, IconButton } from "./ui/primitives";
 import { useSendAlert } from "../hooks/usePools";
 import { useToast } from "../hooks/useToast";
 import { useFocusTrap, useScrollLock } from "../hooks/useMisc";
+import { PoolLinks } from "./ui/PoolLinks";
 
 const SCORE_LABELS: Record<string, string> = {
   momentum: "Momentum",
@@ -161,10 +162,13 @@ export function PoolDrawer({
                 </h2>
                 {pool.isTokenizedStock && <StockTag ticker={pool.stockTicker} name={pool.stockName} />}
               </div>
-              <p className="mt-1 truncate text-[12px] text-txt-2">
-                {pool.baseToken.name}
-                {pool.dexId ? ` · ${pool.dexId}` : ""}
-              </p>
+              <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                <p className="min-w-0 truncate text-[12px] text-txt-2">
+                  {pool.baseToken.name}
+                  {pool.dexId ? ` · ${pool.dexId}` : ""}
+                </p>
+                <PoolLinks pool={pool} />
+              </div>
             </div>
 
             <div className="flex shrink-0 items-center gap-1">

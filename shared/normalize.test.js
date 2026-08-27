@@ -120,6 +120,40 @@ describe("normalizeDexScreenerPair", () => {
     expect(pool.sparkline).toEqual([]);
     expect(pool.dataQuality).toEqual({ hasCandles: false, hasUnderlyingPrice: false });
   });
+
+  it("preserves the official website and prefers an X Community over a profile", () => {
+    const pool = normalizeDexScreenerPair(
+      rawPair({
+        info: {
+          websites: [{ label: "Website", url: "https://example.com" }],
+          socials: [
+            { type: "twitter", url: "https://x.com/example" },
+            { type: "twitter", url: "https://x.com/i/communities/123" },
+          ],
+        },
+      }),
+      { now: NOW, tokenMap }
+    );
+
+    expect(pool.links).toEqual({
+      website: "https://example.com",
+      community: "https://x.com/i/communities/123",
+    });
+  });
+
+  it("falls back to the X profile and rejects non-http link schemes", () => {
+    const pool = normalizeDexScreenerPair(
+      rawPair({
+        info: {
+          websites: [{ label: "Website", url: "javascript:alert(1)" }],
+          socials: [{ type: "twitter", url: "https://twitter.com/example" }],
+        },
+      }),
+      { now: NOW, tokenMap }
+    );
+
+    expect(pool.links).toEqual({ website: null, community: "https://twitter.com/example" });
+  });
 });
 
 describe("applyEnrichment", () => {
@@ -252,6 +286,7 @@ describe("normalizeGeckoTerminalPool", () => {
   it("always has empty labels since GeckoTerminal doesn't provide honeypot/danger flags", () => {
     const pool = normalizeGeckoTerminalPool(rawGeckoPool(), { now: NOW, tokenMap: {} });
     expect(pool.labels).toEqual([]);
+    expect(pool.links).toEqual({ website: null, community: null });
   });
 
   it("defaults missing numeric fields to 0/null rather than NaN", () => {

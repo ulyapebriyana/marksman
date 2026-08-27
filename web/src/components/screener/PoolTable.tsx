@@ -7,6 +7,7 @@ import { formatAge, formatCount, formatPrice, formatUsd } from "../../lib/format
 import { Delta, PremiumBadge, RiskBadge, ScoreBar, SignalBadge, StockTag } from "../ui/badges";
 import { Sparkline } from "../ui/charts";
 import { EmptyState } from "../ui/states";
+import { PoolLinks } from "../ui/PoolLinks";
 
 export type ColumnKey =
   | "price"
@@ -247,6 +248,7 @@ export function PoolTable({
                         <span className="text-txt-2"> / {pool.quoteToken.symbol ?? "?"}</span>
                       </span>
                       {pool.isTokenizedStock && <StockTag ticker={pool.stockTicker} name={pool.stockName} />}
+                      <PoolLinks pool={pool} className="ml-0.5" />
                       {!pool.presetGate.passed && (
                         <span
                           className="h-1 w-1 shrink-0 rounded-full bg-txt-2"

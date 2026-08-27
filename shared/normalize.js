@@ -40,6 +40,38 @@ function lower(address) {
   return typeof address === "string" ? address.toLowerCase() : address;
 }
 
+function externalHttpUrl(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+function dexScreenerLinks(raw) {
+  const websites = Array.isArray(raw?.info?.websites) ? raw.info.websites : [];
+  const socials = Array.isArray(raw?.info?.socials) ? raw.info.socials : [];
+
+  const website =
+    websites.find((item) => /website|official|site/i.test(String(item?.label ?? ""))) ?? websites[0];
+
+  // Fabriq treats an X profile as the project's community link, but gives a
+  // real X Community priority when both are present. Preserve the URL only;
+  // the frontend chooses the single-person/group icon from the path.
+  const xLinks = socials
+    .map((item) => ({ type: String(item?.type ?? "").toLowerCase(), url: externalHttpUrl(item?.url) }))
+    .filter((item) => item.url && (item.type === "twitter" || item.type === "x" || /(?:x|twitter)\.com\//i.test(item.url)));
+  const community = xLinks.find((item) => /\/i\/communities\//i.test(item.url)) ?? xLinks[0];
+
+  return {
+    website: externalHttpUrl(website?.url),
+    community: community?.url ?? null,
+  };
+}
+
 /**
  * @param {object} raw a single "pair" object from DexScreener's /latest/dex/pairs response
  * @param {object} ctx
@@ -107,6 +139,7 @@ export function normalizeDexScreenerPair(raw, ctx = {}) {
     feeTierBps: null,
 
     labels: Array.isArray(raw?.labels) ? raw.labels : [],
+    links: dexScreenerLinks(raw),
 
     isKnownToken: isTokenizedStock || MAJOR_QUOTE_SYMBOLS.has(quoteSymbol),
     isTokenizedStock,
@@ -193,6 +226,7 @@ export function normalizeGeckoTerminalPool(raw, ctx = {}) {
     // DexScreener does; a pool discovered only here just won't get that
     // particular security signal until/unless DexScreener also has it.
     labels: [],
+    links: { website: null, community: null },
 
     isKnownToken: isTokenizedStock || MAJOR_QUOTE_SYMBOLS.has(quoteSymbol),
     isTokenizedStock,

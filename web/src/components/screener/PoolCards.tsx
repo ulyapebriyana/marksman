@@ -6,6 +6,7 @@ import { formatAge, formatPrice, formatUsd } from "../../lib/format";
 import { Delta, PremiumBadge, RiskBadge, ScoreBar, SignalBadge, StockTag } from "../ui/badges";
 import { Sparkline } from "../ui/charts";
 import { EmptyState } from "../ui/states";
+import { PoolLinks } from "../ui/PoolLinks";
 
 export function PoolCards({
   pools,
@@ -70,10 +71,13 @@ export function PoolCards({
                   </h3>
                   {pool.isTokenizedStock && <StockTag ticker={pool.stockTicker} name={pool.stockName} />}
                 </div>
-                <p className="mt-0.5 truncate text-[11px] text-txt-2">
-                  {pool.baseToken.name}
-                  {pool.dexId ? ` · ${pool.dexId}` : ""}
-                </p>
+                <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                  <p className="min-w-0 truncate text-[11px] text-txt-2">
+                    {pool.baseToken.name}
+                    {pool.dexId ? ` · ${pool.dexId}` : ""}
+                  </p>
+                  <PoolLinks pool={pool} />
+                </div>
               </div>
 
               <div className="flex shrink-0 items-center gap-1">
