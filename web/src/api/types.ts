@@ -581,8 +581,22 @@ export interface PnlReconciliation {
   truncated: boolean;
 }
 
+/**
+ * A walk that has not finished yet. Reconstructing a cold wallet takes a
+ * minute or two, so the endpoint answers 202 with this rather than holding
+ * the request open, and the client polls.
+ */
+export interface WalletPnlPending {
+  wallet: string;
+  pending: true;
+  startedAt: string;
+  elapsedSeconds: number;
+  note: string;
+}
+
 export interface WalletPnl {
   wallet: string;
+  pending: false;
   chain: string;
   protocol: string;
   denomination: string;
@@ -601,5 +615,9 @@ export interface WalletPnl {
     transactionsScanned: number;
     basis: string;
     disclaimer: string;
+    /** True while a refresh runs behind a result that has aged out. */
+    refreshing?: boolean;
   };
 }
+
+export type WalletPnlResponse = WalletPnl | WalletPnlPending;

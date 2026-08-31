@@ -8,10 +8,10 @@ export function localTzOffsetMinutes(): number {
 }
 
 /**
- * Walking a wallet costs one explorer call per LP transaction plus a price
- * series per pool, so this deliberately does NOT poll. Realized P&L for days
- * that have already ended does not move; the server caches for minutes and the
- * user refreshes when they want to.
+ * A cold wallet takes a minute or two to reconstruct, so the server runs the
+ * walk as a background job and answers `pending` until it lands. This polls
+ * only while that is true — once the report arrives it stops, because realized
+ * P&L for days that have already ended does not move.
  */
 export function useWalletPnl(address: string | null, tzOffsetMinutes: number) {
   return useQuery({
@@ -19,11 +19,17 @@ export function useWalletPnl(address: string | null, tzOffsetMinutes: number) {
     queryFn: () => fetchWalletPnl(address!, { tzOffsetMinutes }),
     enabled: Boolean(address),
     staleTime: 120_000,
+    refetchInterval: (query) => (query.state.data?.pending ? 4_000 : false),
     // A 400 means the address is malformed. Retrying cannot change that.
     retry: (failureCount, error) => !(error instanceof ApiError && error.status === 400) && failureCount < 2,
   });
 }
 
+/**
+ * Forcing a refresh discards the cached walk and starts a new one, so the
+ * answer is a `pending` marker rather than fresh numbers — writing it into the
+ * cache is what re-arms the poll above.
+ */
 export function useRefreshWalletPnl(address: string | null, tzOffsetMinutes: number) {
   const queryClient = useQueryClient();
   return useMutation({

@@ -9,11 +9,16 @@
 //   lpLedger        folding it all into positions
 //   walletPnl       bucketing closed positions into calendar days
 //
-// The walk costs one Blockscout call per candidate transaction, so the whole
-// result is cached per wallet; re-bucketing for a different time zone is done
-// on the cached walk and costs nothing.
+// The walk costs one Blockscout call per candidate transaction plus a
+// throttled price series per pool, so a cold wallet takes a minute or two.
+// That is far too long to hold an HTTP request open — nginx gives up at sixty
+// seconds, and a phone on mobile data gives up sooner — so the walk runs as a
+// background job and the endpoint answers immediately: 202 with `pending`
+// while it runs, the report once it lands. The client polls.
+//
+// The finished walk is cached per wallet; re-bucketing it for a different time
+// zone is done per request and costs nothing.
 
-import { createTtlCache } from "../shared/ttlCache.mjs";
 import { mapWithConcurrency } from "../shared/concurrency.mjs";
 import {
   fetchAddressTransactions,
@@ -38,8 +43,14 @@ const seconds = (iso) => Math.floor(new Date(iso).getTime() / 1000);
 
 export function createWalletPnlService(config) {
   const { ttlMs, concurrency, maxLogFetches } = config.walletPnl;
-  const cache = createTtlCache({ successTtlMs: ttlMs, failureTtlMs: 20_000 });
   const prices = createPriceBook({ network: config.geckoNetworkSlug, cachePath: config.walletPnl.priceCachePath });
+
+  /** wallet -> { walked, expiresAt } */
+  const results = new Map();
+  /** wallet -> { startedAt } for a walk currently running */
+  const jobs = new Map();
+  /** wallet -> { error, expiresAt }, so a failure surfaces on the next poll */
+  const failures = new Map();
 
   async function walk(address) {
     const [txs, erc20, nfts] = await Promise.all([
@@ -160,7 +171,33 @@ export function createWalletPnlService(config) {
     };
   }
 
+  /** Kicks off a walk and files the outcome. Never rejects to the caller. */
+  function startJob(address) {
+    const key = address.toLowerCase();
+    const startedAt = Date.now();
+    jobs.set(key, { startedAt });
+
+    walk(address).then(
+      (walked) => {
+        results.set(key, { walked, expiresAt: Date.now() + ttlMs });
+        failures.delete(key);
+        jobs.delete(key);
+      },
+      (error) => {
+        // Short-lived, so a transient upstream failure does not lock the
+        // wallet out for the full result TTL.
+        failures.set(key, { error, expiresAt: Date.now() + 20_000 });
+        jobs.delete(key);
+      }
+    );
+
+    return { startedAt };
+  }
+
   /**
+   * Returns the report if the walk has finished, or a `pending` marker if it
+   * has not. Starting the walk is a side effect of asking for it.
+   *
    * @param {string} address
    * @param {{ offsetMinutes?: number, force?: boolean }} [opts]
    */
@@ -169,13 +206,46 @@ export function createWalletPnlService(config) {
     const { offsetMinutes = 0, force = false } = opts;
 
     const key = address.toLowerCase();
-    if (force) cache.clear();
-    const walked = await cache.getOrFetch(key, () => walk(address));
+    const now = Date.now();
 
+    if (force) {
+      results.delete(key);
+      failures.delete(key);
+    }
+
+    const failure = failures.get(key);
+    if (failure) {
+      if (failure.expiresAt > now) {
+        failures.delete(key);
+        throw failure.error;
+      }
+      failures.delete(key);
+    }
+
+    const cached = results.get(key);
+    const fresh = cached && cached.expiresAt > now;
+
+    // A stale result is still served while the refresh runs behind it — a
+    // slightly old calendar beats a spinner, and the walk is idempotent.
+    if (!fresh && !jobs.has(key)) startJob(address);
+
+    if (!cached) {
+      const job = jobs.get(key);
+      return {
+        wallet: address,
+        pending: true,
+        startedAt: new Date(job?.startedAt ?? now).toISOString(),
+        elapsedSeconds: Math.round((now - (job?.startedAt ?? now)) / 1000),
+        note: "Menyusun ulang riwayat LP dari log on-chain. Ini butuh satu sampai dua menit untuk wallet yang belum pernah dibaca.",
+      };
+    }
+
+    const walked = cached.walked;
     const report = buildWalletPnl(walked, { offsetMinutes });
 
     return {
       wallet: address,
+      pending: false,
       chain: config.chainId,
       protocol: "uniswap-v4",
       denomination: "USD",
@@ -183,6 +253,8 @@ export function createWalletPnlService(config) {
       reconciliation: { ...report.reconciliation, truncated: walked.truncated },
       meta: {
         fetchedAt: walked.fetchedAt,
+        // True while a refresh runs behind a result that has aged out.
+        refreshing: jobs.has(key),
         sources: ["Blockscout (robinhoodchain)", "GeckoTerminal"],
         cacheTtlSeconds: ttlMs / 1000,
         lpTransactions: walked.lpTxCount,
@@ -195,5 +267,5 @@ export function createWalletPnlService(config) {
     };
   }
 
-  return { getPnl, cacheSize: () => cache.size() };
+  return { getPnl, cacheSize: () => results.size, jobsRunning: () => jobs.size };
 }

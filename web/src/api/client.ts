@@ -6,7 +6,7 @@ import type {
   PresetKey,
   StatusResponse,
   TokenReport,
-  WalletPnl,
+  WalletPnlResponse,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -67,10 +67,10 @@ export function fetchTokenReport(address: string, opts: { force?: boolean } = {}
 export function fetchWalletPnl(
   address: string,
   opts: { tzOffsetMinutes?: number; force?: boolean } = {}
-): Promise<WalletPnl> {
+): Promise<WalletPnlResponse> {
   const params = new URLSearchParams();
   if (opts.tzOffsetMinutes != null) params.set("tz", String(opts.tzOffsetMinutes));
   if (opts.force) params.set("force", "1");
   const qs = params.toString();
-  return get<WalletPnl>(`/api/wallet/${address}/pnl${qs ? `?${qs}` : ""}`);
+  return get<WalletPnlResponse>(`/api/wallet/${address}/pnl${qs ? `?${qs}` : ""}`);
 }

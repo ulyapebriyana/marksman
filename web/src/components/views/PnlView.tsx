@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Wallet } from "lucide-react";
-import type { WalletPnl } from "../../api/types";
+import type { WalletPnl, WalletPnlResponse } from "../../api/types";
 import { Button, Chip, Eyebrow, IconButton, Panel, Stat } from "../ui/primitives";
 import { EmptyState, ErrorState, TableSkeleton } from "../ui/states";
 import {
@@ -159,7 +159,7 @@ function IncompleteBanner({ data }: { data: WalletPnl }) {
 export function PnlView({
   address,
   onAddressChange,
-  data,
+  data: response,
   isLoading,
   error,
   onRefresh,
@@ -168,7 +168,7 @@ export function PnlView({
 }: {
   address: string | null;
   onAddressChange: (value: string) => void;
-  data: WalletPnl | undefined;
+  data: WalletPnlResponse | undefined;
   isLoading: boolean;
   error: Error | null;
   onRefresh: () => void;
@@ -178,6 +178,9 @@ export function PnlView({
   const [draft, setDraft] = useState(address ?? "");
   const [month, setMonth] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const pending = response?.pending ? response : null;
+  const data: WalletPnl | undefined = response && !response.pending ? response : undefined;
 
   const offset = data?.timeZoneOffsetMinutes ?? 0;
   const activeMonth = month ?? data?.summary.lastDay?.slice(0, 7) ?? todayAt(offset).slice(0, 7);
@@ -249,13 +252,21 @@ export function PnlView({
 
       {error && <ErrorState message={error.message} onRetry={onRetry} />}
 
-      {isLoading && (
+      {(isLoading || pending) && (
         <Panel>
+          {pending && (
+            <div className="flex items-start gap-2.5 border-b border-line px-4 py-3 text-[12px] leading-relaxed text-txt-1">
+              <RefreshCw size={15} className="mt-0.5 shrink-0 animate-spin text-reticle" aria-hidden />
+              <p>
+                {pending.note} <span className="num text-txt-2">({pending.elapsedSeconds}s)</span>
+              </p>
+            </div>
+          )}
           <TableSkeleton rows={7} />
         </Panel>
       )}
 
-      {data && !isLoading && (
+      {data && !isLoading && !pending && (
         <>
           <IncompleteBanner data={data} />
 

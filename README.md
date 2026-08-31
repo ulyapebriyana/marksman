@@ -176,6 +176,18 @@ Robinhood Chain has no P&L API, so the whole figure is reconstructed:
 | Positions | `lpLedger.js` | deposits, withdrawals, fees, per position |
 | Days | `walletPnl.js` | closed positions bucketed into calendar days |
 
+### The walk is a background job, not a long request
+
+A cold wallet takes a minute or two — the price throttle below dominates it —
+so the endpoint does not hold the connection open. The first call starts the
+walk and answers `202` with `{ pending: true, elapsedSeconds }`; the client
+polls every few seconds and gets `200` with the report once it lands. This is
+not a nicety: nginx cuts a proxied request at sixty seconds, so the synchronous
+version returned a 504 in production for every wallet not already cached, and a
+phone on mobile data would have given up sooner still. A result that has aged
+out is served as-is while its refresh runs behind it (`meta.refreshing`) — a
+slightly old calendar beats a spinner.
+
 ### Why the salt is the whole trick
 
 Uniswap v4 keeps no per-position accounting on chain, and `ModifyLiquidity`

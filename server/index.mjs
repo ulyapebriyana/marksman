@@ -110,7 +110,10 @@ async function main() {
         force: req.query.force === "1",
       });
       res.set("Cache-Control", "no-store");
-      res.json(report);
+      // 202 while the walk is still running: the client polls rather than
+      // holding a connection open for a minute that nginx would cut at sixty
+      // seconds anyway.
+      res.status(report.pending ? 202 : 200).json(report);
     } catch (err) {
       if (err instanceof InvalidWalletError) {
         return res.status(400).json({ error: err.message });
@@ -143,6 +146,7 @@ async function main() {
       tokenReportCacheSize: tokenReports.cacheSize(),
       geckoTokenCacheSize: tokenReports.geckoCacheSize(),
       walletPnlCacheSize: walletPnl.cacheSize(),
+      walletPnlJobsRunning: walletPnl.jobsRunning(),
       defaultWallet: config.defaultWallet || null,
     });
   });
