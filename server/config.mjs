@@ -71,10 +71,13 @@ export async function loadConfig() {
     // The one endpoint that reads a wallet rather than the chain at large:
     // Uniswap v4 LP positions on Robinhood Chain, reconstructed from logs.
     walletPnl: {
-      // A cold walk is ~1 upstream call per pool the wallet has closed a
-      // position in, so this is cached far longer than a scan. Realized P&L
-      // for days that have already ended does not move anyway.
-      ttlMs: envInt("WALLET_PNL_TTL_SECONDS", 300) * 1000,
+      // Much longer than a scan, because the two things are not comparable: a
+      // pool's price moves every block, while a closed position's P&L is
+      // settled history that will never change again. Only the current day can
+      // still move. A short TTL would re-walk the whole wallet every few
+      // minutes — roughly a hundred explorer calls — to re-derive numbers that
+      // were already final.
+      ttlMs: envInt("WALLET_PNL_TTL_SECONDS", 900) * 1000,
       // Blockscout is the bottleneck: one call per candidate transaction.
       concurrency: envInt("WALLET_PNL_CONCURRENCY", 6),
       // A guard, not an expected limit — a wallet busier than this reports

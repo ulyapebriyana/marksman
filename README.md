@@ -152,7 +152,7 @@ npm test                 # Vitest — 94 tests over shared/ and server/
 | `SOCIAL_PROVIDER` / `SOCIAL_API_KEY` | _(empty)_ | `twitterapi` (twitterapi.io) or `x` (official X API v2). Powers the team/catalysts/community/alpha sections of the token report. Unset means those sections say "not connected" — they never render as "nobody is talking about this" |
 | `ANTHROPIC_API_KEY` / `LLM_MODEL` | _(empty)_ / `claude-opus-5` | Synthesises the raw posts above into structured Indonesian sections. Unset means the report still ships its deterministic narrative plus the raw mentions |
 | `TOKEN_REPORT_TTL_SECONDS` | `300` | How long one token's report is cached. Deliberately longer than the scan cadence — a report costs up to six upstream calls plus an LLM round-trip |
-| `WALLET_PNL_TTL_SECONDS` | `300` | How long one wallet's P&L walk is cached. A cold walk costs one explorer call per LP transaction plus a price series per pool, and realized P&L for days that have already ended does not move |
+| `WALLET_PNL_TTL_SECONDS` | `900` | How long one wallet's P&L walk is cached. Deliberately far longer than a scan: a closed position's P&L is settled history, and only the current day can still move |
 | `WALLET_PNL_CONCURRENCY` | `6` | Explorer calls in flight while walking a wallet |
 | `WALLET_PNL_MAX_TX` | `600` | Guard on how many transactions one walk will read. A busier wallet reports itself `truncated` rather than quietly showing a partial calendar |
 | `PRICE_CACHE_PATH` | `data/price-cache.json` | Where historical candles are persisted. A closed candle never changes, so re-fetching it would spend GeckoTerminal quota for nothing |
