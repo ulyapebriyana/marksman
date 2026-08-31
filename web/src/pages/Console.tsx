@@ -3,6 +3,7 @@ import { Download, Droplets, Moon, RefreshCw, Star, Sun, Trash2 } from "lucide-r
 import type { LpPresetKey, Pool, PresetKey } from "../api/types";
 import { useForceRescan, useHistory, usePools, useStatus } from "../hooks/usePools";
 import { useRefreshTokenReport, useTokenReport } from "../hooks/useTokenReport";
+import { localTzOffsetMinutes, useRefreshWalletPnl, useWalletPnl } from "../hooks/useWalletPnl";
 import { useWatchlist } from "../hooks/useWatchlist";
 import { useHotkeys, useLeaderKey } from "../hooks/useHotkeys";
 import { useScanProgress } from "../hooks/useMisc";
@@ -24,6 +25,7 @@ import { SpreadsView } from "../components/views/SpreadsView";
 import { LiquidityView } from "../components/views/LiquidityView";
 import { SignalsView } from "../components/views/SignalsView";
 import { SystemView } from "../components/views/SystemView";
+import { PnlView } from "../components/views/PnlView";
 import { TokenReportView } from "../components/views/TokenReportView";
 
 // Analytics is the only view that pulls in Recharts — roughly half the bundle.
@@ -53,6 +55,11 @@ export default function Console() {
     readStored<Filters>(STORAGE_KEYS.filters, DEFAULT_FILTERS, (v): v is Filters => typeof v === "object" && v !== null)
   );
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
+  // The wallet the P&L calendar is pointed at. Persisted because it is the one
+  // piece of state on that screen a user would hate to retype every visit.
+  const [pnlWallet, setPnlWallet] = useState<string>(() =>
+    readStored<string>(STORAGE_KEYS.pnlWallet, "", (v): v is string => typeof v === "string")
+  );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(() =>
     readStored<boolean>(STORAGE_KEYS.railCollapsed, false, (v): v is boolean => typeof v === "boolean")
@@ -60,6 +67,13 @@ export default function Console() {
 
   // A token report is a detail route layered over the console shell rather
   // than a nav view — the rail keeps whatever view the user came from.
+  // Minutes east of UTC. Which calendar day a position closed on depends on
+  // whose midnight you mean, so the browser's own offset travels with the
+  // request instead of the server assuming UTC.
+  const tzOffset = useMemo(() => localTzOffsetMinutes(), []);
+  const walletPnlQuery = useWalletPnl(view === "pnl" && pnlWallet ? pnlWallet : null, tzOffset);
+  const refreshWalletPnl = useRefreshWalletPnl(pnlWallet || null, tzOffset);
+
   const tokenAddress = tokenAddressFromPath(path);
   const tokenQuery = useTokenReport(tokenAddress);
   const refreshToken = useRefreshTokenReport(tokenAddress);
@@ -80,6 +94,7 @@ export default function Console() {
   useEffect(() => writeStored(STORAGE_KEYS.lpPreset, lpPreset), [lpPreset]);
   useEffect(() => writeStored(STORAGE_KEYS.filters, filters), [filters]);
   useEffect(() => writeStored(STORAGE_KEYS.railCollapsed, railCollapsed), [railCollapsed]);
+  useEffect(() => writeStored(STORAGE_KEYS.pnlWallet, pnlWallet), [pnlWallet]);
 
   // Keep the open drawer pointed at the freshest copy of its pool, so numbers
   // update in place instead of freezing at whatever the row held when clicked.
@@ -225,7 +240,7 @@ export default function Console() {
       );
     }
 
-    if (poolsQuery.isError && pools.length === 0 && view !== "system") {
+    if (poolsQuery.isError && pools.length === 0 && view !== "system" && view !== "pnl") {
       return (
         <ErrorState
           message={poolsQuery.error instanceof Error ? poolsQuery.error.message : "Could not load pools."}
@@ -275,6 +290,25 @@ export default function Console() {
             lpPreset={lpPreset}
             onLpPresetChange={setLpPreset}
             onSelectPool={setSelectedPool}
+          />
+        );
+      case "pnl":
+        return (
+          <PnlView
+            address={pnlWallet || null}
+            onAddressChange={setPnlWallet}
+            data={walletPnlQuery.data}
+            isLoading={walletPnlQuery.isLoading}
+            error={walletPnlQuery.error instanceof Error ? walletPnlQuery.error : null}
+            onRefresh={() =>
+              refreshWalletPnl.mutate(undefined, {
+                onSuccess: () => showToast("P&L wallet disegarkan.", "success"),
+                onError: (err) =>
+                  showToast(err instanceof Error ? err.message : "Gagal menyegarkan P&L.", "error"),
+              })
+            }
+            isRefreshing={refreshWalletPnl.isPending}
+            onRetry={() => walletPnlQuery.refetch()}
           />
         );
       case "signals":

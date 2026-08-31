@@ -31,4 +31,5 @@ export const STORAGE_KEYS = {
   layout: "marksman:layout",
   railCollapsed: "marksman:rail-collapsed",
   seenLanding: "marksman:seen-landing",
+  pnlWallet: "marksman:pnl-wallet",
 } as const;

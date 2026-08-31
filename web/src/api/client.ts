@@ -6,6 +6,7 @@ import type {
   PresetKey,
   StatusResponse,
   TokenReport,
+  WalletPnl,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -56,4 +57,20 @@ export async function postAlert(address: string, preset?: PresetKey): Promise<Al
 /** One token's full analysis report. `force` bypasses the server-side cache. */
 export function fetchTokenReport(address: string, opts: { force?: boolean } = {}): Promise<TokenReport> {
   return get<TokenReport>(`/api/token/${address}${opts.force ? "?force=1" : ""}`);
+}
+
+/**
+ * One wallet's realized daily P&L. `tzOffsetMinutes` is minutes east of UTC —
+ * which calendar day a position closed on depends entirely on whose midnight
+ * you mean, so the client states its own rather than letting the server guess.
+ */
+export function fetchWalletPnl(
+  address: string,
+  opts: { tzOffsetMinutes?: number; force?: boolean } = {}
+): Promise<WalletPnl> {
+  const params = new URLSearchParams();
+  if (opts.tzOffsetMinutes != null) params.set("tz", String(opts.tzOffsetMinutes));
+  if (opts.force) params.set("force", "1");
+  const qs = params.toString();
+  return get<WalletPnl>(`/api/wallet/${address}/pnl${qs ? `?${qs}` : ""}`);
 }

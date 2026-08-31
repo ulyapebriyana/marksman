@@ -67,6 +67,27 @@ export async function loadConfig() {
       poolDetailTtlMs: envInt("POOL_DETAIL_TTL_SECONDS", 120) * 1000,
     },
 
+    // --- Wallet P&L calendar (GET /api/wallet/:address/pnl) ---
+    // The one endpoint that reads a wallet rather than the chain at large:
+    // Uniswap v4 LP positions on Robinhood Chain, reconstructed from logs.
+    walletPnl: {
+      // A cold walk is ~1 upstream call per pool the wallet has closed a
+      // position in, so this is cached far longer than a scan. Realized P&L
+      // for days that have already ended does not move anyway.
+      ttlMs: envInt("WALLET_PNL_TTL_SECONDS", 300) * 1000,
+      // Blockscout is the bottleneck: one call per candidate transaction.
+      concurrency: envInt("WALLET_PNL_CONCURRENCY", 6),
+      // A guard, not an expected limit — a wallet busier than this reports
+      // itself as truncated rather than quietly showing a partial calendar.
+      maxLogFetches: envInt("WALLET_PNL_MAX_TX", 600),
+      // Candles that have already closed never change, so the price cache is
+      // worth keeping across restarts — re-fetching it would spend the
+      // GeckoTerminal quota the background scan is already competing for.
+      priceCachePath: process.env.PRICE_CACHE_PATH ?? join(ROOT, "data", "price-cache.json"),
+    },
+    // Optional convenience only — the UI asks for a wallet when it is unset.
+    defaultWallet: process.env.DEFAULT_WALLET ?? "",
+
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
     telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
     autoAlertOnHot: process.env.AUTO_ALERT_ON_HOT === "true",

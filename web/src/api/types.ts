@@ -517,3 +517,89 @@ export interface TokenReport {
     cacheTtlSeconds?: number;
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Wallet P&L calendar                                                         */
+/* -------------------------------------------------------------------------- */
+
+export interface PnlDayPool {
+  pair: string;
+  pnl: number;
+  positions: number;
+}
+
+export interface PnlDay {
+  /** "YYYY-MM-DD" in the time zone the report was bucketed at. */
+  date: string;
+  pnl: number;
+  positions: number;
+  wins: number;
+  losses: number;
+  fees: number;
+  winRatePct: number | null;
+  /** What moved the day, biggest absolute contribution first. */
+  pools: PnlDayPool[];
+}
+
+export interface PnlSummary {
+  netPnl: number;
+  closedPositions: number;
+  wins: number;
+  losses: number;
+  winRatePct: number | null;
+  grossProfit: number;
+  grossLoss: number;
+  /** Null, never Infinity — a profit factor with no losses has no denominator. */
+  profitFactor: number | null;
+  avgWin: number | null;
+  avgLoss: number | null;
+  tradingDays: number;
+  greenDays: number;
+  redDays: number;
+  dayWinRatePct: number | null;
+  bestDay: { date: string; pnl: number } | null;
+  worstDay: { date: string; pnl: number } | null;
+  fees: number;
+  currentStreak: { direction: "green" | "red" | "flat"; days: number };
+  firstDay: string | null;
+  lastDay: string | null;
+}
+
+/**
+ * How much of the wallet the walk could actually account for. This is not
+ * diagnostics — a P&L missing three positions looks exactly like a P&L that
+ * is simply smaller, so the UI has to be able to say which.
+ */
+export interface PnlReconciliation {
+  complete: boolean;
+  positionsCounted: number;
+  positionsExcluded: number;
+  positionsUnpriced: number;
+  positionsPartial: number;
+  failedTxs: { hash: string; reason: string }[];
+  openPositions: number;
+  truncated: boolean;
+}
+
+export interface WalletPnl {
+  wallet: string;
+  chain: string;
+  protocol: string;
+  denomination: string;
+  days: PnlDay[];
+  /** "YYYY-MM" buckets holding at least one trading day, oldest first. */
+  months: string[];
+  summary: PnlSummary;
+  timeZoneOffsetMinutes: number;
+  reconciliation: PnlReconciliation;
+  poolCount: number;
+  meta: {
+    fetchedAt: string;
+    sources: string[];
+    cacheTtlSeconds: number;
+    lpTransactions: number;
+    transactionsScanned: number;
+    basis: string;
+    disclaimer: string;
+  };
+}

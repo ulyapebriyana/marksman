@@ -8,3 +8,4 @@ web/node_modules/
 .claude/
 skills-lock.json
 data/signal-history.json
+data/price-cache.json

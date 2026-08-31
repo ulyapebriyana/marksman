@@ -1,6 +1,15 @@
-import { Activity, BarChart3, Droplets, Filter, LayoutDashboard, Scale, Server, Table2 } from "lucide-react";
+import { Activity, BarChart3, CalendarDays, Droplets, Filter, LayoutDashboard, Scale, Server, Table2 } from "lucide-react";
 
-export type ViewKey = "overview" | "screener" | "funnel" | "spreads" | "liquidity" | "signals" | "analytics" | "system";
+export type ViewKey =
+  | "overview"
+  | "screener"
+  | "funnel"
+  | "spreads"
+  | "liquidity"
+  | "pnl"
+  | "signals"
+  | "analytics"
+  | "system";
 
 export interface NavItem {
   key: ViewKey;
@@ -52,6 +61,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Droplets,
     hotkey: "l",
     blurb: "Fee income against LVR — is providing worth it?",
+  },
+  {
+    key: "pnl",
+    label: "P&L",
+    path: "/app/pnl",
+    icon: CalendarDays,
+    hotkey: "d",
+    blurb: "Untung rugi harian dari posisi LP yang sudah ditutup",
   },
   {
     key: "signals",

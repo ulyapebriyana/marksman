@@ -28,6 +28,7 @@ server/            Express app + scan pipeline orchestration (I/O)
   config.mjs           env + token map loading
   scanCache.mjs         time-based cache with stampede guard
   historyStore.mjs      atomic, queued JSON history writes
+  walletPnl.mjs         wallet walk -> priced ledger -> daily P&L
   alerts.mjs            Telegram sender
 
 shared/             Pure, I/O-free logic + data-source adapters
@@ -39,8 +40,14 @@ shared/             Pure, I/O-free logic + data-source adapters
   normalize.js          raw DexScreener/GeckoTerminal shapes -> one internal pool shape, mergePoolSources (+ .test.js)
   signalTransitions.js  getPoolSignalStatus, createSignalTracker (+ .test.js)
   concurrency.mjs       bounded-concurrency async mapper (+ .test.js)
+  uniswapMath.js        concentrated-liquidity identities: ticks, sqrt prices,
+                        and what a liquidity delta was worth (+ .test.js)
+  lpLedger.js           on-chain LP events -> positions with a P&L (+ .test.js)
+  walletPnl.js          closed positions -> daily calendar + summary (+ .test.js)
   ttlCache.mjs          per-key cache, separate success/failure TTL (+ .test.js)
-  dataSources/          dexscreener.mjs, geckoterminal.mjs, equity.mjs, tokenMap.mjs, httpClient.mjs
+  dataSources/          dexscreener.mjs, geckoterminal.mjs, equity.mjs, tokenMap.mjs,
+                        httpClient.mjs, blockscout.mjs (wallet history),
+                        poolPrices.mjs (historical prices, on a call budget)
 
 data/
   signal-history.json   append-only signal transition log (capped at 250)
@@ -66,7 +73,7 @@ web/                Frontend (Vite + React)
 
 Two surfaces, one bundle. `/` is the landing page; everything under `/app` is
 the console (`/app`, `/app/screener`, `/app/funnel`, `/app/spreads`, `/app/liquidity`,
-`/app/signals`, `/app/analytics`, `/app/system`). Unknown paths fall back to the
+`/app/pnl`, `/app/signals`, `/app/analytics`, `/app/system`). Unknown paths fall back to the
 landing page, and unknown `/app/*` paths fall back to the overview.
 
 `server/index.mjs` already serves `web/dist/index.html` for any non-`/api` path,
@@ -145,7 +152,101 @@ npm test                 # Vitest — 94 tests over shared/ and server/
 | `SOCIAL_PROVIDER` / `SOCIAL_API_KEY` | _(empty)_ | `twitterapi` (twitterapi.io) or `x` (official X API v2). Powers the team/catalysts/community/alpha sections of the token report. Unset means those sections say "not connected" — they never render as "nobody is talking about this" |
 | `ANTHROPIC_API_KEY` / `LLM_MODEL` | _(empty)_ / `claude-opus-5` | Synthesises the raw posts above into structured Indonesian sections. Unset means the report still ships its deterministic narrative plus the raw mentions |
 | `TOKEN_REPORT_TTL_SECONDS` | `300` | How long one token's report is cached. Deliberately longer than the scan cadence — a report costs up to six upstream calls plus an LLM round-trip |
+| `WALLET_PNL_TTL_SECONDS` | `300` | How long one wallet's P&L walk is cached. A cold walk costs one explorer call per LP transaction plus a price series per pool, and realized P&L for days that have already ended does not move |
+| `WALLET_PNL_CONCURRENCY` | `6` | Explorer calls in flight while walking a wallet |
+| `WALLET_PNL_MAX_TX` | `600` | Guard on how many transactions one walk will read. A busier wallet reports itself `truncated` rather than quietly showing a partial calendar |
+| `PRICE_CACHE_PATH` | `data/price-cache.json` | Where historical candles are persisted. A closed candle never changes, so re-fetching it would spend GeckoTerminal quota for nothing |
+| `DEFAULT_WALLET` | _(empty)_ | Optional. Pre-fills the P&L screen's wallet field |
 | `GECKO_TOKEN_TTL_SECONDS` | `1800` | How long the GeckoTerminal half of a report (holder distribution, deployer holding, launchpad state) is cached — see "Living with the rate limit" below |
+
+## The wallet P&L calendar
+
+`GET /api/wallet/:address/pnl` answers one question — **how much did this
+wallet make or lose, on each day** — for an address providing liquidity on
+Uniswap v4 on Robinhood Chain. `/app/pnl` renders it as a month calendar.
+
+Robinhood Chain has no P&L API, so the whole figure is reconstructed:
+
+| Step | Source | What it gives |
+|---|---|---|
+| Wallet history | Blockscout | transactions, token flows, decoded logs |
+| Liquidity changes | `ModifyLiquidity` logs | pool, tick range, liquidity delta, **and the position's NFT id** |
+| Prices | GeckoTerminal hourly candles | what each token was worth *at the hour it moved* |
+| Amounts | `uniswapMath.js` | how many tokens that liquidity was |
+| Positions | `lpLedger.js` | deposits, withdrawals, fees, per position |
+| Days | `walletPnl.js` | closed positions bucketed into calendar days |
+
+### Why the salt is the whole trick
+
+Uniswap v4 keeps no per-position accounting on chain, and `ModifyLiquidity`
+reports only liquidity — never token amounts. What makes exact attribution
+possible anyway is that v4's PositionManager stores the position's NFT id in
+the event's `salt`. A transaction that closes one position and opens another
+in the same breath — a rebalance, which is most of them — is therefore still
+unambiguous. Without the salt, the wallet's net token flow would be all you
+had, and it nets the two positions together.
+
+### Why hourly candles are precise enough
+
+Valuing a liquidity delta needs the pool's price at that instant, which is not
+available historically on a public RPC. An hourly candle close is used
+instead. That is fine, and not by luck: moving the price along the curve
+trades one token for the other *at that same price*, so the token split shifts
+but the dollar total barely does. Checked against a real withdrawal, the
+candle-priced value came to $399.61 against an actual $399.61, while the token
+split was off by 1.4%. There is a test pinning exactly this.
+
+### Time zone is not cosmetic
+
+Which calendar day a position closed on depends on whose midnight you mean, so
+the client sends its own UTC offset (`?tz=`, minutes east of UTC) and the
+server buckets to it. This is worth being fussy about: comparing against a
+third-party tracker on the same wallet, every daily figure disagreed until the
+offset matched — and then the position counts matched exactly, day for day.
+The expensive half of the walk is cached per wallet and the bucketing is redone
+per request, so changing zone costs nothing.
+
+### Only closed positions, and only what could be priced
+
+A position is closed when its liquidity returns to zero — **not** when its NFT
+is burned, which in v4 usually never happens. Open positions are left off the
+calendar entirely: an unrealized number does not belong on a day that has
+already ended.
+
+Every response carries a `reconciliation` block, and the UI shows a banner
+whenever `complete` is false. This is not diagnostics. A P&L missing three
+positions looks exactly like a P&L that is simply smaller, so the screen has to
+be able to say which:
+
+- `positionsUnpriced` — pools with no usable price history
+- `positionsPartial` — positions whose *opening* was never seen, so their cost
+  basis is unknowable. During development one such position reported its entire
+  $533 exit as profit, which was most of the wallet's apparent net. The guard
+  that catches it has a test named after the bug
+- `failedTxs` / `truncated` — explorer calls that did not land
+
+None of these are counted as zero.
+
+### Living with two rate limits
+
+The walk is bounded by Blockscout on one side and GeckoTerminal on the other.
+Both are handled by spending less rather than retrying harder:
+
+- **Blockscout** is scanned in two passes. Pass one reads only transactions
+  that moved a position NFT — pure signal by definition — and *learns which
+  contracts this wallet LPs through*. Pass two then reads only transactions
+  sent to those contracts. Nothing is hardcoded, so a new router ships and this
+  still works. It also cut a real wallet's walk from 182 lookups to 92.
+- **Blockscout paginates transaction logs at fifty**, and an LP transaction on
+  a taxed token routinely exceeds that once the router's swap, the tax hops and
+  the dividend bookkeeping land in the same receipt. Reading only the first
+  page silently loses the liquidity events after them — which is precisely how
+  that $533 phantom profit appeared. Every page is walked.
+- **GeckoTerminal** is the same ~30 calls/minute the background scan already
+  half-consumes (see "Living with the rate limit" below). Price calls are
+  serialised through one throttle with a minimum gap, backed off on 429, and
+  persisted to `data/price-cache.json` — a candle that has closed will never
+  change, so a restart must not cost the quota twice.
 
 ## The liquidity-provider model
 
